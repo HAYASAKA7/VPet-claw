@@ -1,0 +1,34 @@
+<Window x:Class="VPet.Plugin.OpenClawBridge.winOpenClawSetting"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OpenClaw Settings" Height="260" Width="440" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,5">
+            <TextBlock Text="Gateway URL:" Width="90" VerticalAlignment="Center"/>
+            <TextBox x:Name="tbUrl" Width="310" Height="24" VerticalContentAlignment="Center"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5">
+            <TextBlock Text="Auth Token:" Width="90" VerticalAlignment="Center"/>
+            <PasswordBox x:Name="tbToken" Width="310" Height="24"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,5">
+            <TextBlock Text="Session Key:" Width="90" VerticalAlignment="Center"/>
+            <TextBox x:Name="tbSessionKey" Width="310" Height="24" VerticalContentAlignment="Center"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" Margin="90,6,0,0" TextWrapping="Wrap" Foreground="DimGray"
+                   Text="Gateway URL is the OpenClaw websocket endpoint. The model base URL is configured inside your OpenClaw server, not in VPet."/>
+
+        <Button Grid.Row="4" Content="Save and Connect" Width="130" Height="30" HorizontalAlignment="Right" Click="Save_Click"/>
+    </Grid>
+</Window>
