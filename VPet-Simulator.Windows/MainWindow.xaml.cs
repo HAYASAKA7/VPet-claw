@@ -11,6 +11,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.Xml;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -294,12 +295,24 @@ namespace VPet_Simulator.Windows
                         {
                             if (winMutiPlayer == null)
                             {
-                                winInputBox.Show(this, "请输入访客表ID".Translate(), "加入访客表".Translate(), "1860000", (id) =>
+                                winInputBox.Show(this, "请输入访客表ID/固定ID".Translate(), "加入访客表".Translate(), "1860000", (id) =>
                                 {
                                     if (ulong.TryParse(id, NumberStyles.HexNumber, null, out ulong lid))
                                     {
                                         winMutiPlayer = new winMutiPlayer(this, lid);
                                         winMutiPlayer.Show();
+                                    }
+                                    else if ((id.StartsWith('V') || id.StartsWith('v')) && int.TryParse(id[1..], out int fixedid))
+                                    {
+                                        if (ulong.TryParse(GetVPetRoom("SteamRoomGetLobbyID", fixID: fixedid), out lid) && lid > 1860000)
+                                        {
+                                            winMutiPlayer = new winMutiPlayer(this, lid);
+                                            winMutiPlayer.Show();
+                                        }
+                                        else
+                                        {
+                                            MessageBoxX.Show("未找到该固定ID,请检查输入".Translate());
+                                        }
                                     }
                                 });
                             }
@@ -325,6 +338,8 @@ namespace VPet_Simulator.Windows
                     SteamFriends.OnGameLobbyJoinRequested += SteamFriends_OnGameLobbyJoinRequested;
                 }
 
+
+                //这里写的都是限定第一个MW使用的功能, 如果写共通, 请前往
 
                 //物品初始使用方法
                 Item.UseAction.Add("Food", [(imw,Item) =>
@@ -370,9 +385,9 @@ namespace VPet_Simulator.Windows
                               var chosenfood = imw.Foods.FindAll(x=>x.Price > 10 && x.Price < moneylimit);
                               if(chosenfood.Count == 0)
                                     return false;
-                              imw.ItemsAdd(Foods[Function.Rnd.Next(Foods.Count)].Clone());
-                              imw.ItemsAdd(Foods[Function.Rnd.Next(Foods.Count)].Clone());
-                              imw.ItemsAdd(Foods[Function.Rnd.Next(Foods.Count)].Clone());
+                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(Foods.Count)].Clone());
+                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(Foods.Count)].Clone());
+                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(Foods.Count)].Clone());
                               Item.Consume(imw);
                               return true;
                       }
@@ -406,13 +421,6 @@ namespace VPet_Simulator.Windows
                       }
                       return false;
                   }]);
-                if (GameSavesData.GameSave.Likability < 520)
-                    Core.Graph.GraphsName[GraphType.Idel].Remove("like520");
-                else if (Core.Graph.FindGraph("like520", AnimatType.Single, IGameSave.ModeType.Happy) != null)
-                {
-                    Event_NewDay += like520;
-                    like520();
-                }
             });
         }
 
@@ -435,25 +443,48 @@ namespace VPet_Simulator.Windows
 
         private void SteamMatchmaking_OnLobbyInvite(Friend friend, Lobby lobby)
         {
-            if (winMutiPlayer != null)
+            if (Set["banuser"][(gbol)friend.Id.Value.ToString()])
                 return;
             if (!friend.IsPlayingThisGame)
             {
                 ActivityLogs.Add(new ActivityLog("stream_invite_other", friend.Name));
-                Main.Say("你的好友{0}邀请你玩游戏,快去回应ta吧".Translate(friend.Name), desc: "SID:" + friend.Id.Value);
+                var tb = new TextBlock() { Text = "SID:" + friend.Id.Value, FontSize = 18, ToolTip = "SID:" + friend.Id.Value };
+                Button btn = new Button();
+                btn.Content = "屏蔽该用户".Translate();
+                btn.Style = FindResource("ThemedButtonStyle") as Style;
+                btn.FontSize = 18;
+                btn.Padding = new Thickness(2, 0, 2, 0);
+                btn.Margin = new Thickness(3, 0, 0, 0);
+                btn.Click += (_, _) =>
+                {
+                    Set["banuser"][(gbol)friend.Id.Value.ToString()] = true;
+                    Main.MsgBar.ForceClose();
+                };
+                var stackpanal = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+                stackpanal.Children.Add(tb);
+                stackpanal.Children.Add(btn);
+                Main.Say("你的好友{0}邀请你玩游戏,快去回应ta吧".Translate(friend.Name), msgcontent: stackpanal);
                 return;
             }
 
             Dispatcher.Invoke(() =>
             {
                 Button btn = new Button();
-                btn.Content = "加入访客表";
+                btn.Content = "加入访客表".Translate();
                 btn.Style = FindResource("ThemedButtonStyle") as Style;
                 btn.Click += (_, _) =>
                 {
-                    winMutiPlayer = new winMutiPlayer(this, lobby.Id);
-                    winMutiPlayer.Show();
-                    Main.MsgBar.ForceClose();
+                    if (winMutiPlayer == null)
+                    {
+                        winMutiPlayer = new winMutiPlayer(this, lobby.Id);
+                        winMutiPlayer.Show();
+                        Main.MsgBar.ForceClose();
+                    }
+                    else
+                    {
+                        MessageBoxX.Show("已经有加入了一个访客表,无法再创建更多".Translate());
+                        winMutiPlayer.Focus();
+                    }
                 };
                 ActivityLogs.Add(new ActivityLog("stream_invite_vpet", friend.Name));
                 Main.Say("收到来自{0}的访客邀请,是否加入?".Translate(friend.Name), msgcontent: btn);
@@ -700,7 +731,7 @@ namespace VPet_Simulator.Windows
                 }
                 catch
                 {
-                    //备份损坏了,那就不管了                           
+                    //备份损坏了,那就不管了
                 }
             }
             Core.Save = GameSavesData.GameSave;
@@ -860,6 +891,22 @@ namespace VPet_Simulator.Windows
         public void ShowInputBox(string title, string text, string defaulttext, Action<string> ENDAction, bool AllowMutiLine = false, bool TextCenter = true, bool CanHide = false)
         {
             winInputBox.Show(this, title, text, defaulttext, ENDAction, AllowMutiLine, TextCenter, CanHide);
+        }
+        /// <summary>
+        /// 从VPET服务器获取访客表相关信息的接口
+        /// </summary>
+        public string GetVPetRoom(string action, int fixID = 0, ulong lobbyid = 0)
+        {
+            string RequestURL = $"https://report.exlb.net/VPET/{action}?hoststeamid={SteamID}&fixid={fixID}&lobbyid={lobbyid}";
+            using System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
+            try
+            {
+                return client.GetStringAsync(RequestURL).Result;
+            }
+            catch (Exception e)
+            {
+                return e.Message;
+            }
         }
     }
 }
