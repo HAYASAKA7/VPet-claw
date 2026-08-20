@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Interop;
 using VPet_Simulator.Windows.Interface;
@@ -16,13 +17,15 @@ namespace VPet_Simulator.Windows
     {
         public App() : base()
         {
+            Environment.CurrentDirectory =
+                Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
 #if !DEBUG
             base.DispatcherUnhandledException += (s, e) => { e.Handled = true; UnhandledException(e.Exception, false); };
-            AppDomain.CurrentDomain.UnhandledException += (s, e) => { UnhandledException((e.ExceptionObject as Exception), true); };
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => { UnhandledException((e.ExceptionObject as Exception)!, true); };
 #endif
             //AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
         }
-        public static string[] Args { get; set; }
+        public static string[] Args { get; set; } = [];
         /// <summary>
         /// 多存档系统名称
         /// </summary>

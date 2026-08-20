@@ -53,7 +53,7 @@ namespace VPet_Simulator.Windows.Interface
         /// <summary>
         /// 当前正在使用的TalkBox
         /// </summary>
-        ITalkAPI TalkBoxCurr { get; }
+        ITalkAPI? TalkBoxCurr { get; }
         /// <summary>
         /// 桌宠数据核心
         /// </summary>
@@ -102,7 +102,7 @@ namespace VPet_Simulator.Windows.Interface
         /// 获得自动点击的文本
         /// </summary>
         /// <returns>说话内容</returns>
-        ClickText GetClickText();
+        ClickText? GetClickText();
         /// <summary>
         /// 所有照片
         /// </summary>
@@ -293,5 +293,9 @@ namespace VPet_Simulator.Windows.Interface
         /// </summary>
         /// <param name="item">物品</param>
         public void ItemsAdd(Item item);
+        /// <summary>
+        /// 上次吃食物的时间
+        /// </summary>
+        public DateTime LastTakeItemTime { get; }
     }
 }

@@ -14,7 +14,7 @@ namespace VPet_Simulator.Core
         /// </summary>
         /// <param name="EndAction">停止动作</param>
         /// <param name="parant">显示位置</param>
-        void Run(Decorator parant, Action EndAction = null);
+        void Run(Decorator parant, Action? EndAction = null);
 
         /// <summary>
         /// 是否循环播放
@@ -42,7 +42,7 @@ namespace VPet_Simulator.Core
         /// <summary>
         /// 当前动画播放状态和控制
         /// </summary>
-        TaskControl Control { get; }
+        TaskControl? Control { get; }
 
         /// <summary>
         /// 停止动画
@@ -61,8 +61,29 @@ namespace VPet_Simulator.Core
         /// </summary>
         void SetContinue()
         {
-            Control.Type = TaskControl.ControlType.Continue;
+            if (Control != null)
+                Control.Type = TaskControl.ControlType.Continue;
         }
+
+        /// <summary>
+        /// 动画文件路径, 可能是文件夹或文件
+        /// </summary>
+        string? Path { get; }
+        /// <summary>
+        /// 上次使用时间戳, 用于判断是否需要释放资源
+        /// </summary>
+        long LastUseTimeTicks => 0;
+
+        /// <summary>
+        /// 修改最后使用时间为当前时间，以便在清理空闲缓存时判断是否需要清理
+        /// </summary>
+        void Touch() { }
+        /// <summary>
+        /// 清理空闲缓存, 如果该动画长时间未使用, 则释放资源
+        /// </summary>
+        /// <param name="nowTicks">当前时间</param>
+        void CleanupIdleCache(long nowTicks) { }
+
         /// <summary>
         /// 指示该ImageRun支持
         /// </summary>
@@ -74,12 +95,8 @@ namespace VPet_Simulator.Core
             /// <param name="parant">显示位置</param>
             /// <param name="EndAction">结束方法</param>
             /// <param name="image">额外图片</param>
-            void Run(Decorator parant, ImageSource image, Action EndAction = null);
+            void Run(Decorator parant, ImageSource image, Action? EndAction = null);
         }
-        /// <summary>
-        /// 动画文件路径, 可能是文件夹或文件
-        /// </summary>
-        string Path { get; }
 
         /// <summary>
         /// 动画控制类
@@ -97,7 +114,7 @@ namespace VPet_Simulator.Core
             /// <summary>
             /// 停止播放
             /// </summary>
-            public void Stop(Action endAction = null) { EndAction = endAction; Type = ControlType.Stop; }
+            public void Stop(Action? endAction = null) { EndAction = endAction; Type = ControlType.Stop; }
             /// <summary>
             /// 控制类型
             /// </summary>
@@ -123,7 +140,7 @@ namespace VPet_Simulator.Core
             /// <summary>
             /// 结束动作
             /// </summary>
-            public Action EndAction;
+            public Action? EndAction;
             /// <summary>
             /// 控制类型
             /// </summary>
@@ -132,7 +149,7 @@ namespace VPet_Simulator.Core
             /// 为动画控制类提供操作和结束动作
             /// </summary>
             /// <param name="endAction"></param>
-            public TaskControl(Action endAction = null)
+            public TaskControl(Action? endAction = null)
             {
                 EndAction = endAction;
             }

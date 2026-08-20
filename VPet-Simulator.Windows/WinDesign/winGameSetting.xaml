@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:VPet_Simulator.Windows" Foreground="{StaticResource PrimaryText}"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:pu="clr-namespace:Panuon.WPF.UI;assembly=Panuon.WPF.UI" d:DesignHeight="1000"
-        xmlns:system="clr-namespace:System;assembly=mscorlib" Width="{ll:Dbe SettingWidth_650, DefValue=650}"
+        xmlns:system="clr-namespace:System;assembly=mscorlib" Width="{ll:Dbe SettingWidth_700, DefValue=700}"
         Height="{ll:Dbe SettingHeight_550, DefValue=550}" Closing="WindowX_Closing" FontSize="16"
         Style="{DynamicResource BaseWindowXStyle}" WindowStartupLocation="CenterScreen" mc:Ignorable="d">
     <!--<pu:WindowX.Resources>
@@ -265,9 +265,8 @@
                                         Content="{ll:Str '常态透明度'}" ToggleBrush="{DynamicResource PrimaryDark}"
                                         ToggleShadowColor="{x:Null}" ToggleSize="14" ToolTip="{ll:Str '为桌宠整体启用透明度'}"
                                         Unchecked="SwitchOpacity_Checked" />
-                                <pu:Switch x:Name="SwitchOpacityHitThrough" Grid.Column="2"
-                                        Background="Transparent" BorderBrush="{DynamicResource PrimaryDark}"
-                                        BoxHeight="18" BoxWidth="35"
+                                <pu:Switch x:Name="SwitchOpacityHitThrough" Grid.Column="2" Background="Transparent"
+                                        BorderBrush="{DynamicResource PrimaryDark}" BoxHeight="18" BoxWidth="35"
                                         CheckedBackground="{DynamicResource Primary}"
                                         CheckedBorderBrush="{DynamicResource Primary}"
                                         CheckedToggleBrush="{DynamicResource DARKPrimaryText}"
@@ -282,14 +281,14 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Slider x:Name="OpacitySlider" VerticalAlignment="Center" IsSnapToTickEnabled="True"
-                                        LargeChange=".1" Maximum="1" Minimum="0.05" SmallChange=".05" Style="{DynamicResource StandardSliderStyle}"
-                                        TickFrequency="0.05" Value="0.6"
+                                        LargeChange=".1" Maximum="1" Minimum="0.05" SmallChange=".05"
+                                        Style="{DynamicResource StandardSliderStyle}" TickFrequency="0.05" Value="0.6"
                                         PreviewMouseUp="OpacitySlider_PreviewMouseUp" />
                                 <TextBlock Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Center"
                                         Background="{x:Null}" FontSize="18" FontWeight="Bold"
                                         Foreground="{DynamicResource DARKPrimaryDarker}"
                                         Text="{Binding ElementName=OpacitySlider, Path=Value, StringFormat=p0}" />
-                                 </Grid>
+                            </Grid>
                         </Grid>
                     </ScrollViewer>
                     <Button x:Name="ButtonRestartGraph" VerticalAlignment="Bottom"
@@ -366,13 +365,11 @@
                             <pu:NumberInput x:Name="numBackupSaveMaxNum" Grid.Column="2" Margin="0,1,0,1"
                                     BorderBrush="{DynamicResource PrimaryDarker}" BorderThickness="1.5" CornerRadius="4"
                                     Minimum="1" ValueChanged="numBackupSaveMaxNum_ValueChanged" Value="20" />
-                            <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="{ll:Str 加载存档}" />
-                            <Button x:Name="BtnSaveReload" Grid.Row="1" Grid.Column="3" Margin="5" Padding="1"
-                                    pu:ButtonHelper.CornerRadius="4" Background="{DynamicResource SecondaryLight}"
-                                    Click="BtnSaveReload_Click" Content="{ll:Str 加载}" ToolTip="{ll:Str 加载上次保存的存档}" />
-                            <ComboBox x:Name="CBSaveReLoad" Grid.Row="1" Grid.Column="2" FontSize="16"
-                                    MouseEnter="CBSaveReLoad_MouseEnter" SelectedIndex="3"
-                                    Style="{DynamicResource StandardComboBoxStyle}" />
+                            <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="{ll:Str 存档管理}" />
+                            <Button x:Name="BtnOpenSaveManager" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                    Margin="5" Padding="1" pu:ButtonHelper.CornerRadius="4"
+                                    Background="{DynamicResource SecondaryLight}" Click="BtnOpenSaveManager_Click"
+                                    Content="{ll:Str 打开存档管理器}" ToolTip="{ll:Str 查看并加载游戏存档}" />
                         </Grid>
 
                         <TextBlock Margin="0,5,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -566,7 +563,7 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
-                                    
+
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="35" />
@@ -662,14 +659,15 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <pu:Switch x:Name="AutoChangeWindowEvent" Margin="5" Background="Transparent"
-                                    BorderBrush="{DynamicResource PrimaryDark}" BoxHeight="18" BoxWidth="35"
-                                    Checked="AutoChangeWindowEvent_Checked" CheckedBackground="{DynamicResource Primary}"
-                                    CheckedBorderBrush="{DynamicResource Primary}"
-                                    CheckedToggleBrush="{DynamicResource DARKPrimaryText}" Content="{ll:Str 启用窗口自动切换}"
-                                    IsChecked="True" ToggleBrush="{DynamicResource PrimaryDark}"
-                                    ToggleShadowColor="{x:Null}" ToggleSize="14"
-                                    ToolTip="{ll:Str '启用窗口切换，桌宠将能自主切换窗口'}"
-                                    Unchecked="AutoChangeWindowEvent_Checked" Grid.Row="0" Grid.ColumnSpan="3"/>
+                                        BorderBrush="{DynamicResource PrimaryDark}" BoxHeight="18" BoxWidth="35"
+                                        Checked="AutoChangeWindowEvent_Checked"
+                                        CheckedBackground="{DynamicResource Primary}"
+                                        CheckedBorderBrush="{DynamicResource Primary}"
+                                        CheckedToggleBrush="{DynamicResource DARKPrimaryText}"
+                                        Content="{ll:Str 启用窗口自动切换}" IsChecked="True"
+                                        ToggleBrush="{DynamicResource PrimaryDark}" ToggleShadowColor="{x:Null}"
+                                        ToggleSize="14" ToolTip="{ll:Str '启用窗口切换，桌宠将能自主切换窗口'}"
+                                        Unchecked="AutoChangeWindowEvent_Checked" Grid.Row="0" Grid.ColumnSpan="3" />
                                 <WrapPanel Grid.ColumnSpan="3" Grid.Column="0" Grid.Row="1">
                                     <TextBlock Text="{ll:Str '当前移动区域：'}" />
                                     <TextBlock x:Name="textMoveArea" Text="{ll:Str '主屏幕'}" />
@@ -915,17 +913,30 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-            <TabItem BorderBrush="{DynamicResource PrimaryDarker}" Header="{ll:Str MOD管理}">
+            <TabItem x:Name="TabModManage" BorderBrush="{DynamicResource PrimaryDarker}" Header="{ll:Str MOD管理}">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="30" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="20" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="15" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
+
+                    <TextBox x:Name="tb_seach_mod" FontSize="16" pu:TextBoxHelper.Watermark="{ll:Str 搜索MOD}"
+                            BorderThickness="1" pu:TextBoxHelper.CornerRadius="4" BorderBrush="LightGray"
+                            Style="{DynamicResource StandardTextBoxStyle}" VerticalAlignment="Center"
+                            TextChanged="tb_seach_mod_TextChanged" />
                     <ListBox x:Name="ListMod" VerticalAlignment="Top" Background="Transparent" BorderThickness="0"
                             SelectionChanged="ListMod_SelectionChanged" SelectionMode="Single"
-                            Style="{DynamicResource SideMenuListBoxStyle}" />
-                    <StackPanel Grid.Column="2">
+                            Style="{DynamicResource SideMenuListBoxStyle}" Grid.Row="1" Margin="0,5,0,5" />
+                    <Button x:Name="ButtonReLS" Background="{DynamicResource Primary}" pu:ButtonHelper.Icon="&#xF064;"
+                            pu:IconHelper.FontFamily="{StaticResource RemixIcon}" Content="{ll:Str 刷新列表}"
+                            Foreground="{DynamicResource PrimaryText}" Click="ButtonReLS_Click" Grid.Row="2" />
+                    <StackPanel Grid.Column="2" Grid.RowSpan="3">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -984,45 +995,46 @@
                                         Foreground="{DynamicResource DARKPrimaryDarker}"
                                         MouseDown="ButtonOpenModFolder_MouseDown" Text="{ll:Str '所在文件夹'}"
                                         TextDecorations="Underline" TextWrapping="Wrap" />
-                                <TextBlock x:Name="ButtonEnable" Margin="0,2,0,0" HorizontalAlignment="Left"
+                                <TextBlock x:Name="ButtonEnable" Margin="0,4,0,0" HorizontalAlignment="Left"
                                         VerticalAlignment="Top" Cursor="Hand" FontSize="14"
                                         Foreground="{DynamicResource DARKPrimaryDarker}"
                                         MouseDown="ButtonEnable_MouseDown" Text="{ll:Str '启用该模组'}"
                                         TextDecorations="Underline" TextWrapping="Wrap" />
-                                <TextBlock x:Name="ButtonDisEnable" Margin="0,2,0,0" HorizontalAlignment="Left"
+                                <TextBlock x:Name="ButtonDisEnable" Margin="0,4,0,0" HorizontalAlignment="Left"
                                         VerticalAlignment="Top" Cursor="Hand" FontSize="14"
                                         Foreground="{DynamicResource DARKPrimaryDarker}"
                                         MouseDown="ButtonDisEnable_MouseDown" Text="{ll:Str '停用该模组'}"
                                         TextDecorations="Underline" TextWrapping="Wrap" />
-                                <TextBlock x:Name="ButtonPublish" Margin="0,2,0,0" HorizontalAlignment="Left"
+                                <TextBlock x:Name="ButtonPublish" Margin="0,4,0,0" HorizontalAlignment="Left"
                                         VerticalAlignment="Top" Cursor="Hand" FontSize="14" Foreground="DimGray"
                                         MouseDown="ButtonPublish_MouseDown" Text="{ll:Str 更新至Steam}"
                                         TextDecorations="Underline" TextWrapping="Wrap" />
-                                <TextBlock x:Name="ButtonSteam" Margin="0,2,0,0" HorizontalAlignment="Left"
+                                <TextBlock x:Name="ButtonSteam" Margin="0,4,0,0" HorizontalAlignment="Left"
                                         VerticalAlignment="Top" Cursor="Hand" FontSize="14" Foreground="DimGray"
                                         MouseDown="ButtonSteam_MouseDown" Text="{ll:Str 创意工坊页面}"
                                         TextDecorations="Underline" TextWrapping="Wrap" />
-                                <ProgressBar x:Name="ProgressBarUpload" Height="30" Margin="0,2,0,0"
+                                <ProgressBar x:Name="ProgressBarUpload" Height="30" Margin="0,4,0,0"
                                         VerticalAlignment="Top" pu:ProgressBarHelper.CornerRadius="2"
                                         pu:ProgressBarHelper.IsPercentVisible="True"
                                         Background="{DynamicResource Primary}"
                                         BorderBrush="{DynamicResource PrimaryDarker}" BorderThickness="2"
                                         Foreground="{DynamicResource DARKPrimary}" Visibility="Collapsed" Value="60" />
-                                <TextBlock x:Name="ButtonSetting" Margin="0,2,0,0" HorizontalAlignment="Left"
+                                <TextBlock x:Name="ButtonSetting" Margin="0,4,0,0" HorizontalAlignment="Left"
                                         VerticalAlignment="Top" Cursor="Hand" FontSize="14"
                                         Foreground="{DynamicResource DARKPrimaryDarker}"
                                         MouseDown="ButtonSetting_MouseDown" Text="{ll:Str MOD设置}"
                                         TextDecorations="Underline" TextWrapping="Wrap" />
                                 <Button x:Name="ButtonAllow" HorizontalAlignment="Left" VerticalAlignment="Top"
-                                        Background="#FFFF2C2C" Click="ButtonAllow_Click" Content="{ll:Str 启用代码插件}"
-                                        FontSize="12" Foreground="White" ToolTip="{ll:Str '启用该模组的代码内容,不能保证系统安全性'}" />
-                            </StackPanel>
-                            <Button x:Name="ButtonRestart" Grid.ColumnSpan="2" Margin="0,2,0,0"
-                                    VerticalAlignment="Bottom" Background="{DynamicResource DARKPrimary}"
-                                    Click="ButtonRestart_Click" Content="{ll:Str 重启软件以应用更改}"
-                                    Foreground="{DynamicResource DARKPrimaryText}" Visibility="Collapsed" />
+                                        Margin="0,4,0,0" Background="#FFFF2C2C" Click="ButtonAllow_Click"
+                                        Content="{ll:Str 启用代码插件}" FontSize="12" Foreground="White"
+                                        ToolTip="{ll:Str '启用该模组的代码内容,不能保证系统安全性'}" />
+                            </StackPanel>                            
                         </Grid>
                     </StackPanel>
+                    <Button x:Name="ButtonRestart" Grid.Column="2" Grid.RowSpan="3" Margin="0,2,0,0" VerticalAlignment="Bottom"
+                            Background="{DynamicResource DARKPrimary}" Click="ButtonRestart_Click"
+                            Content="{ll:Str 重启软件以应用更改}" Foreground="{DynamicResource DARKPrimaryText}"
+                            Visibility="Collapsed" />
                 </Grid>
             </TabItem>
             <TabItem BorderBrush="{DynamicResource PrimaryDarker}" Foreground="{DynamicResource PrimaryText}"
@@ -1104,7 +1116,13 @@
                             <Run Text="{ll:Str 访问Github页面}" />
                         </Hyperlink>
                         <LineBreak />
-                        <Run FontSize="12" FontStyle="Italic" Text="{ll:Str '由于游戏暂未开发完毕,该名单并非完整名单.将在正式版完成前修改'}" /><LineBreak />
+                        <Run FontSize="12" FontStyle="Italic" Text="{ll:Str '由于游戏暂未开发完毕,该名单并非完整名单.将在正式版完成前修改'}" /><LineBreak /><LineBreak />
+                         <Hyperlink Click="BC_Click">
+                             <Run x:Name="run_BC" Text="" />
+                         </Hyperlink> <LineBreak />
+                        <Hyperlink Click="VV_Click">
+                            <Run x:Name="run_VV" Text="" />
+                        </Hyperlink>
                     </TextBlock>
                 </Grid>
             </TabItem>

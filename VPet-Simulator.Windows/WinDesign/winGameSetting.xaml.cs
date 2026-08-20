@@ -1,5 +1,7 @@
 ﻿using LinePutScript;
+using LinePutScript.Dictionary;
 using LinePutScript.Localization.WPF;
+using NAudio.Midi;
 using NAudio.SoundFont;
 using Panuon.WPF.UI;
 using Steamworks;
@@ -10,6 +12,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,6 +37,7 @@ namespace VPet_Simulator.Windows
     {
         MainWindow mw;
         private bool AllowChange = false;
+
         public winGameSetting(MainWindow mw)
         {
             this.mw = mw;
@@ -44,6 +48,8 @@ namespace VPet_Simulator.Windows
             //Console.WriteLine(DateTime.Now.ToString("mm:ss.fff"));
             ////ImageWHY.Source = bit;
             //Console.WriteLine(DateTime.Now.ToString("mm:ss.fff"));
+
+            mod = mw.CoreMODs[0];
 
             Title = "设置".Translate() + ' ' + mw.PrefixSave;
             SettingMenuWidth.Width = new GridLength(LocalizeCore.GetDouble("SettingMenuWidth", 150));
@@ -75,7 +81,7 @@ namespace VPet_Simulator.Windows
 
             StartUpBox.IsChecked = mw.Set.StartUPBoot;
             StartUpSteamBox.IsChecked = mw.Set.StartUPBootSteam;
-            TextBoxPetName.Text = mw.Core.Save.Name;
+            TextBoxPetName.Text = mw.Core.Save!.Name;
             foreach (PetLoader pl in mw.Pets)
             {
                 PetBox.Items.Add(pl.Name.Translate());
@@ -175,7 +181,7 @@ namespace VPet_Simulator.Windows
             foreach (Sub sub in mw.Set["diy"])
                 StackDIY.Children.Add(new DIYViewer(sub));
 
-            SliderResolution.Maximum = Math.Min(System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width,
+            SliderResolution.Maximum = Math.Min(System.Windows.Forms.Screen.PrimaryScreen!.Bounds.Width,
                 System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height);
             SliderResolution.Value = mw.Set.Resolution;
 
@@ -193,6 +199,8 @@ namespace VPet_Simulator.Windows
             {
                 runUserName.Text = SteamClient.Name;
                 runActivate.Text = "已通过Steam[{0}]激活服务注册".Translate(SteamClient.SteamId.Value.ToString("x").Substring(6));
+                run_BC.Text = "前往 更好买:贡献兑换".Translate();
+                run_VV.Text = "前往 生日会投票 页面".Translate();
             }
             else
             {
@@ -240,8 +248,6 @@ namespace VPet_Simulator.Windows
 
             //mod列表
             ShowModList();
-            ListMod.SelectedIndex = 0;
-            ShowMod((string)((ListBoxItem)ListMod.SelectedItem).Content);
 
             voicetimer = new DispatcherTimer()
             {
@@ -287,6 +293,7 @@ namespace VPet_Simulator.Windows
             ToolTipService.SetInitialShowDelay(runMODGameVerInfo, 0);
 
         }
+
         public List<ListBoxItem> ListMenuItems = new List<ListBoxItem>();
         private void tb_seach_menu_textchange(object sender, TextChangedEventArgs e)
         {
@@ -326,7 +333,7 @@ namespace VPet_Simulator.Windows
             };
             return lbi;
         }
-        private void Voicetimer_Tick(object sender, EventArgs e)
+        private void Voicetimer_Tick(object? sender, EventArgs? e)
         {
             var v = mw.AudioPlayingVolume();
             RVoice.Text = v.ToString("p2");
@@ -344,51 +351,326 @@ namespace VPet_Simulator.Windows
                 RVoice.Foreground = Function.ResourcesBrush(Function.BrushType.PrimaryText);
         }
 
-        public void ShowModList()
+        private class ModInfo
         {
+            public CoreMOD? CoreMod { get; }
+            public int LoadOrder { get; }
+            public string Name { get; }
+            public string Author { get; }
+            public long AuthorID { get; }
+            public ulong ItemID { get; }
+            public string Intro { get; }
+            public DirectoryInfo Path { get; }
+            public int GameVer { get; }
+            public int Ver { get; }
+            public HashSet<string> Tag { get; }
+
+            public bool IsLoaded => CoreMod != null;
+            public bool IsPlugin => Tag.Contains("plugin");
+            public bool HasTrustedCertificate { get; }
+
+            private ModInfo(CoreMOD? coreMod, int loadOrder, string name, string author, long authorID, ulong itemID, string intro, DirectoryInfo path, int gameVer, int ver, HashSet<string> tag)
+            {
+                CoreMod = coreMod;
+                LoadOrder = loadOrder;
+                Name = name;
+                Author = author;
+                AuthorID = authorID;
+                ItemID = itemID;
+                Intro = intro;
+                Path = path;
+                GameVer = gameVer;
+                Ver = ver;
+                Tag = tag;
+                HasTrustedCertificate = !IsPlugin || HasTrustedPluginCertificate(path);
+            }
+
+
+
+            private static bool HasTrustedPluginCertificate(DirectoryInfo directory)
+            {
+                string dllPath = System.IO.Path.Combine(directory.FullName, "plugin");
+                var loadfile = new LpsDocument();
+                string loadFilePath = System.IO.Path.Combine(dllPath, "load.lps");
+                if (File.Exists(loadFilePath))
+                    loadfile = new LpsDocument(File.ReadAllText(loadFilePath));
+
+                foreach (FileInfo tmpfi in new DirectoryInfo(dllPath).EnumerateFiles("*.dll"))
+                {
+#if X64
+                    if (tmpfi.Name.Contains("x86"))
+                        continue;
+                    string cputype = "x64";
+#else
+                    if (tmpfi.Name.Contains("x64"))
+                        continue;
+                    string cputype = "x86";
+#endif
+                    if (loadfile[tmpfi.Name][(gbol)"skip"])
+                        continue;
+
+                    string? dllcpu = loadfile[tmpfi.Name].GetString("cpu", "anycpu")?.ToLowerInvariant();
+                    if (dllcpu != "anycpu" && dllcpu != cputype)
+                        continue;
+
+                    try
+                    {
+                        var certificate = new X509Certificate2(tmpfi.FullName);
+                        if (!(CoreMOD.IsTrustedCertificate(certificate) || CoreMOD.IsLBGameCertificate(certificate)))
+                            return false;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            public bool MatchesSearch(string? searchText)
+            {
+                if (string.IsNullOrWhiteSpace(searchText))
+                    return true;
+
+                var terms = searchText.Split(new[] { ' ', '\t', '\\', '/', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (terms.Length == 0)
+                    return true;
+
+                var tagTranslateText = string.Join(" ", Tag.Select(x => x.Translate()));
+                var searchPool = string.Join("\n", new[]
+                {
+                    Name,
+                    Name.Translate(),
+                    Intro,
+                    Intro.Translate(),
+                    Author,
+                    tagTranslateText
+                });
+
+                return terms.Any(term => searchPool.Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+
+            public static ModInfo FromCoreMod(CoreMOD mod, int loadOrder) => new ModInfo(mod, loadOrder, mod.Name, mod.Author, mod.AuthorID, mod.ItemID, mod.Intro, mod.Path, mod.GameVer, mod.Ver, new HashSet<string>(mod.Tag));
+
+            public static ModInfo FromDirectory(DirectoryInfo directory)
+            {
+                string name = directory.Name;
+                string author = string.Empty;
+                long authorID = 0;
+                ulong itemID = 0;
+                string intro = string.Empty;
+                int gameVer = 0;
+                int ver = 0;
+                HashSet<string> tag = new HashSet<string>();
+
+                foreach (var di in directory.EnumerateDirectories())
+                    tag.Add(di.Name.ToLowerInvariant());
+
+                string infoFile = System.IO.Path.Combine(directory.FullName, "info.lps");
+                if (File.Exists(infoFile))
+                {
+                    try
+                    {
+                        var modlps = new LpsDocument(File.ReadAllText(infoFile));
+                        name = modlps.FindLine("vupmod")?.Info ?? name;
+                        intro = modlps.FindLine("intro")?.Info ?? string.Empty;
+                        gameVer = modlps.FindSub("gamever")?.InfoToInt ?? 0;
+                        ver = modlps.FindSub("ver")?.InfoToInt ?? 0;
+                        author = modlps.FindSub("author")?.Info.Split('[').FirstOrDefault() ?? string.Empty;
+                        authorID = modlps.FindLine("authorid")?.InfoToInt64 ?? 0;
+                        var itemStr = modlps.FindLine("itemid")?.info;
+                        if (!string.IsNullOrWhiteSpace(itemStr))
+                            ulong.TryParse(itemStr, out itemID);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                return new ModInfo(null, int.MaxValue, name, author, authorID, itemID, intro, directory, gameVer, ver, tag);
+            }
+        }
+
+        private readonly List<ModInfo> modInfos = new List<ModInfo>();
+        private ModInfo? selectedModInfo;
+        CoreMOD? mod;
+
+        private IEnumerable<DirectoryInfo> GetModDirectories()
+        {
+            if (Directory.Exists(MainWindow.ModPath))
+            {
+                foreach (var di in new DirectoryInfo(MainWindow.ModPath).EnumerateDirectories())
+                    yield return di;
+            }
+
+            foreach (Sub ws in mw.Set["workshop"])
+            {
+                if (Directory.Exists(ws.Name))
+                    yield return new DirectoryInfo(ws.Name);
+            }
+        }
+
+        private bool isWorkshopRefreshing = false;
+
+        private void RefreshModInfos()
+        {
+            modInfos.Clear();
+            var modInfoByPath = new Dictionary<string, ModInfo>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < mw.CoreMODs.Count; i++)
+            {
+                CoreMOD core = mw.CoreMODs[i];
+                modInfoByPath[core.Path.FullName] = ModInfo.FromCoreMod(core, i);
+            }
+
+            foreach (var di in GetModDirectories())
+            {
+                if (!File.Exists(Path.Combine(di.FullName, "info.lps")))
+                    continue;
+                if (!modInfoByPath.ContainsKey(di.FullName))
+                    modInfoByPath[di.FullName] = ModInfo.FromDirectory(di);
+            }
+
+            modInfos.AddRange(modInfoByPath.Values
+                .OrderByDescending(x => mw.Set.IsOnMod(x.Name))
+                .ThenByDescending(x => mw.Set.IsOnMod(x.Name) && x.IsLoaded)
+                .ThenBy(x => mw.Set.IsOnMod(x.Name) && x.IsLoaded ? x.LoadOrder : int.MaxValue)
+                .ThenBy(x => !x.Path.FullName.Contains("DLC"))
+                .ThenBy(x => !x.Author.Contains("LorisYounger"))
+                .ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase));
+        }
+
+        private void RenderModList(string? selectedPath, string? searchText)
+        {
+            RefreshModInfos();
             ListMod.Items.Clear();
-            foreach (CoreMOD mod in mw.CoreMODs)
+
+            var visibleMods = modInfos.Where(x => x.MatchesSearch(searchText)).ToList();
+            foreach (ModInfo info in visibleMods)
             {
                 ListBoxItem moditem = (ListBoxItem)ListMod.Items[ListMod.Items.Add(new ListBoxItem())];
                 moditem.Padding = new Thickness(5, 0, 5, 0);
-                moditem.Content = mod.Name;
-                if (!mod.IsOnMOD(mw))
+                moditem.Content = info.Name;
+                moditem.Tag = info;
+                bool isOnMod = mw.Set.IsOnMod(info.Name);
+                if (!isOnMod)
                 {
                     moditem.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 100));
                 }
                 else
                 {
-                    if (mod.GameVer / 1000 == mw.version / 1000)
+                    if (info.GameVer / 1000 == mw.version / 1000)
                     {
                         moditem.Foreground = Function.ResourcesBrush(Function.BrushType.PrimaryText);
                     }
-                    else
+                    else if (info.IsPlugin)
                     {
-                        if (mod.Tag.Contains("plugin"))
-                            moditem.Foreground = new SolidColorBrush(Color.FromRgb(190, 0, 0));
+                        moditem.Foreground = new SolidColorBrush(Color.FromRgb(190, 0, 0));
                     }
                 }
             }
+
+            if (ListMod.Items.Count == 0)
+            {
+                selectedModInfo = null;
+                mod = null;
+                return;
+            }
+
+            int selectedIndex = 0;
+            if (!string.IsNullOrWhiteSpace(selectedPath))
+            {
+                for (int i = 0; i < ListMod.Items.Count; i++)
+                {
+                    if (((ListBoxItem)ListMod.Items[i]).Tag is ModInfo info && info.Path.FullName.Equals(selectedPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            ListMod.SelectedIndex = selectedIndex;
+            if (ListMod.SelectedItem is ListBoxItem item && item.Tag is ModInfo modInfo)
+                ShowMod(modInfo);
         }
-        CoreMOD mod;
-        private void ShowMod(string modname)
+
+        private async Task RefreshWorkshopListFromSteamAsync()
         {
-            mod = mw.CoreMODs.Find(x => x.Name == modname);
-            LabelModName.Content = mod.Name.Translate();
-            runMODAuthor.Text = mod.Author;
-            runMODGameVer.Text = CoreMOD.INTtoVER(mod.GameVer);
+            if (!mw.IsSteamUser)
+                return;
+
+            var workshop = new Line_D("workshop");
+            int i = 1;
+            while (true)
+            {
+                var page = await Steamworks.Ugc.Query.ItemsReadyToUse.GetPageAsync(i++);
+                if (!page.HasValue || page.Value.ResultCount == 0)
+                    break;
+
+                foreach (Steamworks.Ugc.Item entry in page.Value.Entries)
+                {
+                    if (entry.Directory != null)
+                        workshop.Add(new Sub(entry.Directory, ""));
+                }
+            }
+
+            mw.Set["workshop"] = workshop;
+        }
+
+        public async void ShowModList()
+        {
+            if (isWorkshopRefreshing)
+                return;
+
+            var selectedPath = selectedModInfo?.Path.FullName;
+            var searchText = tb_seach_mod.Text;
+            isWorkshopRefreshing = true;
+            TabModManage.IsEnabled = false;
+            ButtonReLS.IsEnabled = false;
+            try
+            {
+                await RefreshWorkshopListFromSteamAsync();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                RenderModList(selectedPath, searchText);
+                ButtonReLS.IsEnabled = true;
+                TabModManage.IsEnabled = true;
+                isWorkshopRefreshing = false;
+            }
+        }
+
+        public void ShowMod(string modname)
+        {
+            var modInfo = modInfos.FirstOrDefault(x => x.Name == modname);
+            if (modInfo != null)
+                ShowMod(modInfo);
+        }
+
+        private void ShowMod(ModInfo modInfo)
+        {
+            selectedModInfo = modInfo;
+            mod = modInfo.CoreMod;
+
+            LabelModName.Content = modInfo.Name.Translate();
+            runMODAuthor.Text = modInfo.Author;
+            runMODGameVer.Text = CoreMOD.INTtoVER(modInfo.GameVer);
             runMODGameVer.Foreground = Function.ResourcesBrush(Function.BrushType.PrimaryText);
             if (ImageMOD.Source is BitmapImage bitmapImage)
             {
                 bitmapImage.StreamSource?.Dispose();
             }
-            if (File.Exists(mod.Path.FullName + @"\icon.png"))
+            if (File.Exists(modInfo.Path.FullName + @"\icon.png"))
             {
                 bitmapImage = new();
                 bitmapImage.BeginInit();
                 try
                 {
-                    var bytes = File.ReadAllBytes(mod.Path.FullName + @"\icon.png");
+                    var bytes = File.ReadAllBytes(modInfo.Path.FullName + @"\icon.png");
                     bitmapImage.StreamSource = new MemoryStream(bytes);
                     bitmapImage.DecodePixelWidth = 250;
                 }
@@ -401,10 +683,10 @@ namespace VPet_Simulator.Windows
             else
                 ImageMOD.Source = ImageResources.NewSafeBitmapImage(@"pack://application:,,,/Res/TopLogo2019.PNG");
             runMODGameVerInfo.Visibility = Visibility.Collapsed;
-            if (mod.GameVer / 100 != mw.version / 100)
-                if (mod.GameVer < mw.version)
+            if (modInfo.GameVer / 100 != mw.version / 100)
+                if (modInfo.GameVer < mw.version)
                 {
-                    if (mod.GameVer / 1000 == mw.version / 1000)
+                    if (modInfo.GameVer / 1000 == mw.version / 1000)
                     {
                         runMODGameVer.Text += " (兼容)".Translate();
                     }
@@ -412,20 +694,20 @@ namespace VPet_Simulator.Windows
                     {
                         runMODGameVer.Text += " (版本低)".Translate();
                         runMODGameVerInfo.Visibility = Visibility.Visible;
-                        if (mod.Tag.Contains("plugin"))
+                        if (modInfo.IsPlugin)
                         {
                             runMODGameVer.Foreground = new SolidColorBrush(Color.FromRgb(190, 0, 0));
                             runMODGameVerInfo.ToolTip = "MOD对应游戏版本比当前游戏版本低, 因为包含代码插件, 可能有严重的兼容性问题.\n请联系MOD作者更新MOD".Translate()
-                                + $"\nv{CoreMOD.INTtoVER(mod.GameVer)} < v{mw.Version}";
+                                + $"\nv{CoreMOD.INTtoVER(modInfo.GameVer)} < v{mw.Version}";
                         }
                         else
                             runMODGameVerInfo.ToolTip = "MOD对应游戏版本比当前游戏版本低, 但是游戏的兼容功能可能会生效, MOD可能可以正常使用.\n为确保最佳体验,请联系MOD作者更新MOD".Translate()
-                               + $"\nv{CoreMOD.INTtoVER(mod.GameVer)} < v{mw.Version}";
+                               + $"\nv{CoreMOD.INTtoVER(modInfo.GameVer)} < v{mw.Version}";
                     }
                 }
-                else if (mod.GameVer > mw.version)
+                else if (modInfo.GameVer > mw.version)
                 {
-                    if (mod.GameVer / 1000 == mw.version / 1000)
+                    if (modInfo.GameVer / 1000 == mw.version / 1000)
                     {
                         runMODGameVer.Text += " (兼容)".Translate();
                         runMODGameVer.Foreground = Function.ResourcesBrush(Function.BrushType.PrimaryText);
@@ -436,10 +718,11 @@ namespace VPet_Simulator.Windows
                         runMODGameVerInfo.Visibility = Visibility.Visible;
                         runMODGameVer.Foreground = new SolidColorBrush(Color.FromRgb(190, 0, 0));
                         runMODGameVerInfo.ToolTip = "MOD对应游戏版本比当前游戏版本高, 可能会有兼容性问题.\n请更新游戏".Translate()
-                            + $"\nv{CoreMOD.INTtoVER(mod.GameVer)} > v{mw.Version}";
+                            + $"\nv{CoreMOD.INTtoVER(modInfo.GameVer)} > v{mw.Version}";
                     }
                 }
-            if (!mod.IsOnMOD(mw))
+            bool isOnMod = mw.Set.IsOnMod(modInfo.Name);
+            if (!isOnMod)
             {
                 LabelModName.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 100));
                 ButtonEnable.Foreground = Function.ResourcesBrush(Function.BrushType.DARKPrimaryDarker);
@@ -456,15 +739,15 @@ namespace VPet_Simulator.Windows
                 ButtonDisEnable.IsEnabled = true;
             }
             //发布steam等功能
-            if (mw.IsSteamUser)
+            if (mw.IsSteamUser && modInfo.IsLoaded)
             {
-                if (mod.ItemID == 1)
+                if (modInfo.ItemID == 1)
                 {
                     ButtonSteam.IsEnabled = false;
                     ButtonPublish.Text = "系统自带".Translate();
                     ButtonSteam.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 100));
                 }
-                else if (mod.ItemID == 0)
+                else if (modInfo.ItemID == 0)
                 {
                     ButtonSteam.IsEnabled = false;
                     ButtonPublish.Text = "上传至Steam".Translate();
@@ -476,7 +759,7 @@ namespace VPet_Simulator.Windows
                     ButtonPublish.Text = "更新至Steam".Translate();
                     ButtonSteam.Foreground = Function.ResourcesBrush(Function.BrushType.DARKPrimaryDarker);
                 }
-                if (mod.ItemID != 1 && (mod.AuthorID == SteamClient.SteamId.AccountId || mod.AuthorID == 0))
+                if (modInfo.ItemID != 1 && (modInfo.AuthorID == SteamClient.SteamId.AccountId || modInfo.AuthorID == 0))
                 {
                     ButtonPublish.IsEnabled = true;
                     ButtonPublish.Foreground = Function.ResourcesBrush(Function.BrushType.DARKPrimaryDarker);
@@ -490,34 +773,37 @@ namespace VPet_Simulator.Windows
             else
             {
                 ButtonSteam.IsEnabled = false;
-                ButtonPublish.Text = "未登录".Translate();
+                ButtonPublish.Text = modInfo.IsLoaded ? "未登录".Translate() : "重启后可用".Translate();
                 ButtonPublish.IsEnabled = false;
                 ButtonPublish.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 100));
                 ButtonSteam.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 100));
             }
-            runMODVer.Text = CoreMOD.INTtoVER(mod.Ver);
-            GameInfo.Text = mod.Intro.Translate();
+            runMODVer.Text = CoreMOD.INTtoVER(modInfo.Ver);
+            GameInfo.Text = modInfo.Intro.Translate();
             string content = "";
-            foreach (string tag in mod.Tag)
+            foreach (string tag in modInfo.Tag)
             {
                 content += tag.Translate() + "\n";
             }
             GameHave.Text = content;
-            ButtonAllow.Visibility = mod.SuccessLoad || mw.Set.IsPassMOD(mod.Name) ? Visibility.Collapsed : Visibility.Visible;
+            ButtonAllow.Visibility = ((mod?.SuccessLoad == false || (modInfo.IsPlugin && !modInfo.HasTrustedCertificate)) && !mw.Set.IsPassMOD(modInfo.Name)) ? Visibility.Visible : Visibility.Collapsed;
 
-            foreach (var mainplug in mw.Plugins)
+            if (mod != null)
             {
-                try
+                foreach (var mainplug in mw.Plugins)
                 {
-                    if (mainplug.PluginName == mod.Name &&
-                        mainplug.GetType().GetMethod("Setting").DeclaringType != typeof(MainPlugin)
-                    && mainplug.GetType().Assembly.Location.Contains(mod.Path.FullName))
+                    try
                     {
-                        ButtonSetting.Visibility = Visibility.Visible;
-                        return;
+                        if (mainplug.PluginName == mod.Name &&
+                            mainplug.GetType().GetMethod("Setting")!.DeclaringType != typeof(MainPlugin)
+                        && mainplug.GetType().Assembly.Location.Contains(mod.Path.FullName))
+                        {
+                            ButtonSetting.Visibility = Visibility.Visible;
+                            return;
+                        }
                     }
+                    finally { }
                 }
-                finally { }
             }
             ButtonSetting.Visibility = Visibility.Collapsed;
         }
@@ -542,7 +828,7 @@ namespace VPet_Simulator.Windows
             if (!AllowChange)
                 return;
             mw.LoadTheme(mw.Themes[ThemeBox.SelectedIndex].xName);
-            mw.Set.Theme = mw.Theme.xName;
+            mw.Set.Theme = mw.Theme?.xName ?? string.Empty;
         }
 
         private void FontBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -588,17 +874,19 @@ namespace VPet_Simulator.Windows
 
         private void ListMod_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (!AllowChange || ListMod.SelectedItem == null)
+            if (!AllowChange || ListMod.SelectedItem is not ListBoxItem item || item.Tag is not ModInfo modInfo)
                 return;
 
-            ShowMod((string)((ListBoxItem)ListMod.SelectedItem).Content);
+            ShowMod(modInfo);
         }
 
         private void ButtonOpenModFolder_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (selectedModInfo == null)
+                return;
             var psi = new ProcessStartInfo
             {
-                FileName = mod.Path.FullName,
+                FileName = selectedModInfo.Path.FullName,
                 UseShellExecute = true
             };
             Process.Start(psi);
@@ -606,24 +894,25 @@ namespace VPet_Simulator.Windows
 
         private void ButtonEnable_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            mw.Set.OnMod(mod.Name);
-            ShowMod(mod.Name);
+            if (selectedModInfo == null)
+                return;
+            mw.Set.OnMod(selectedModInfo.Name);
             ButtonRestart.Visibility = Visibility.Visible;
-            //int seleid = ListMod.SelectedIndex();
             ShowModList();
         }
 
         private void ButtonDisEnable_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (mod.Name == "Core")
+            if (selectedModInfo == null)
+                return;
+            if (selectedModInfo.Name == "Core")
             {
                 MessageBoxX.Show("模组 Core 为<虚拟桌宠模拟器>核心文件,无法停用".Translate(), "停用失败".Translate());
                 return;
             }
-            else if (CoreMOD.OnModDefList.Contains(mod.Name))
+            else if (CoreMOD.OnModDefList.Contains(selectedModInfo.Name))
                 return;
-            mw.Set.OnModRemove(mod.Name);
-            ShowMod(mod.Name);
+            mw.Set.OnModRemove(selectedModInfo.Name);
             ButtonRestart.Visibility = Visibility.Visible;
             ShowModList();
         }
@@ -642,6 +931,8 @@ namespace VPet_Simulator.Windows
         private async void ButtonPublish_MouseDown(object sender, MouseButtonEventArgs e)
         {
             var mods = mod;
+            if (mods == null)
+                return;
             if (!mw.IsSteamUser)
             {
                 MessageBoxX.Show("请先登录Steam后才能上传文件".Translate(), "上传MOD需要Steam登录".Translate(), MessageBoxIcon.Warning);
@@ -704,7 +995,7 @@ namespace VPet_Simulator.Windows
             }
             else if (mods.AuthorID == SteamClient.SteamId.AccountId)
             {
-                var item = await Item.GetAsync(mod.ItemID);
+                var item = await Item.GetAsync(mods.ItemID);
                 Editor result;
                 if (item == null)
                 {
@@ -746,18 +1037,20 @@ namespace VPet_Simulator.Windows
 
         private void ButtonSteam_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (!AllowChange)
+            if (!AllowChange || selectedModInfo == null)
                 return;
-            ExtensionFunction.StartURL("https://steamcommunity.com/sharedfiles/filedetails/?id=" + mod.ItemID);
+            ExtensionFunction.StartURL("https://steamcommunity.com/sharedfiles/filedetails/?id=" + selectedModInfo.ItemID);
         }
 
         private void ButtonAllow_Click(object sender, RoutedEventArgs e)
         {
-            if (MessageBoxX.Show("是否启用 {0} 的代码插件?\n一经启用,该插件将会允许访问该系统(包括外部系统)的所有数据\n如果您不确定,请先使用杀毒软件查杀检查".Translate(mod.Name),
-                "启用 {0} 的代码插件?".Translate(mod.Name), MessageBoxButton.YesNo, MessageBoxIcon.Warning) == MessageBoxResult.Yes)
+            if (selectedModInfo == null)
+                return;
+            if (MessageBoxX.Show("是否启用 {0} 的代码插件?\n一经启用,该插件将会允许访问该系统(包括外部系统)的所有数据\n如果您不确定,请先使用杀毒软件查杀检查".Translate(selectedModInfo.Name),
+                "启用 {0} 的代码插件?".Translate(selectedModInfo.Name), MessageBoxButton.YesNo, MessageBoxIcon.Warning) == MessageBoxResult.Yes)
             {
-                mw.Set.PassMod(mod.Name);
-                ShowMod(mod.Name);
+                mw.Set.PassMod(selectedModInfo.Name);
+                ShowMod(selectedModInfo);
                 ButtonRestart.Visibility = Visibility.Visible;
             }
         }
@@ -773,7 +1066,7 @@ namespace VPet_Simulator.Windows
         public void UpdateMoveAreaText()
         {
             var mwCtrl = mw.Core.Controller as MWController;
-            if (mwCtrl.IsPrimaryScreen && !mwCtrl.AutoChangeWindow)
+            if (mwCtrl!.IsPrimaryScreen && !mwCtrl.AutoChangeWindow)
             {
                 textMoveArea.Text = "主屏幕".Translate();
                 return;
@@ -790,23 +1083,23 @@ namespace VPet_Simulator.Windows
         private void BtnSetMoveArea_Default_Click(object sender, RoutedEventArgs e)
         {
             var mwCtrl = mw.Core.Controller as MWController;
-            mwCtrl.ResetScreenBorder();
+            mwCtrl!.ResetScreenBorder();
             UpdateMoveAreaText();
         }
 
         private void BtnSetMoveArea_DetectScreen_Click(object sender, RoutedEventArgs e)
         {
             var mwCtrl = mw.Core.Controller as MWController;
-            mwCtrl.SetNowScreenActivate();
+            mwCtrl!.SetNowScreenActivate();
             UpdateMoveAreaText();
         }
 
-        internal static System.Reflection.FieldInfo leftGetter, topGetter;
+        internal static System.Reflection.FieldInfo? leftGetter, topGetter;
         private void BtnSetMoveArea_Window_Click(object sender, RoutedEventArgs e)
         {
             var wma = new winMoveArea(mw);
             var mwCtrl = mw.Core.Controller as MWController;
-            if (!mwCtrl.IsPrimaryScreen)
+            if (!mwCtrl!.IsPrimaryScreen)
             {
                 var rect = mwCtrl.ScreenBorder;
                 wma.Width = rect.Width;
@@ -844,7 +1137,7 @@ namespace VPet_Simulator.Windows
             if (!AllowChange)
                 return;
             mw.Set.TopMost = true;
-            (mw.notifyIcon.ContextMenuStrip.Items.Find("NotifyIcon_TopMost", false).First() as System.Windows.Forms.ToolStripMenuItem).Checked = true;
+            (mw.notifyIcon.ContextMenuStrip!.Items.Find("NotifyIcon_TopMost", false).First() as System.Windows.Forms.ToolStripMenuItem)!.Checked = true;
         }
 
         private void TopMostBox_Unchecked(object sender, RoutedEventArgs e)
@@ -852,7 +1145,7 @@ namespace VPet_Simulator.Windows
             if (!AllowChange)
                 return;
             mw.Set.TopMost = false;
-            (mw.notifyIcon.ContextMenuStrip.Items.Find("NotifyIcon_TopMost", false).First() as System.Windows.Forms.ToolStripMenuItem).Checked = false;
+            (mw.notifyIcon.ContextMenuStrip!.Items.Find("NotifyIcon_TopMost", false).First() as System.Windows.Forms.ToolStripMenuItem)!.Checked = false;
         }
 
         private void ZoomSlider_MouseUp(object sender, MouseButtonEventArgs e)
@@ -1094,7 +1387,7 @@ namespace VPet_Simulator.Windows
             }
 
 
-            bool ischangename = mw.Core.Save.Name == petloader.PetName.Translate();
+            bool ischangename = mw.Core.Save!.Name == petloader.PetName.Translate();
             petboxbef = PetBox.SelectedIndex;
             mw.Set.PetGraph = mw.Pets[petboxbef].Name;
             PetIntor.Text = mw.Pets[petboxbef].Intor.Translate();
@@ -1102,10 +1395,10 @@ namespace VPet_Simulator.Windows
 
             if (ischangename)
             {
-                mw.Core.Save.Name = mw.Pets[petboxbef].PetName.Translate();
-                TextBoxPetName.Text = mw.Core.Save.Name;
+                mw.Core.Save!.Name = mw.Pets[petboxbef].PetName.Translate();
+                TextBoxPetName.Text = mw.Core.Save!.Name;
                 if (mw.IsSteamUser)
-                    SteamFriends.SetRichPresence("username", mw.Core.Save.Name);
+                    SteamFriends.SetRichPresence("username", mw.Core.Save!.Name);
             }
         }
 
@@ -1113,9 +1406,9 @@ namespace VPet_Simulator.Windows
         {
             if (!AllowChange)
                 return;
-            mw.Core.Save.Name = TextBoxPetName.Text;
+            mw.Core.Save!.Name = TextBoxPetName.Text;
             if (mw.IsSteamUser)
-                SteamFriends.SetRichPresence("username", mw.Core.Save.Name);
+                SteamFriends.SetRichPresence("username", mw.Core.Save!.Name);
         }
 
         private void DIY_ADD_Click(object sender, RoutedEventArgs e)
@@ -1207,7 +1500,7 @@ namespace VPet_Simulator.Windows
                     BtnCGPTReSet.IsEnabled = true;
                     BtnCGPTReSet.Content = "初始化桌宠聊天程序".Translate();
                     mw.TalkBox = new TalkSelect(mw);
-                    mw.Main.ToolBar.MainGrid.Children.Add(mw.TalkBox);
+                    mw.Main.ToolBar!.MainGrid.Children.Add(mw.TalkBox);
                     break;
                 case "OFF":
                 default:
@@ -1220,11 +1513,13 @@ namespace VPet_Simulator.Windows
 
         private void ButtonSetting_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (mod == null)
+                return;
             foreach (var mainplug in mw.Plugins)
             {
                 try
                 {
-                    if (mainplug.PluginName == mod.Name && mainplug.GetType().GetMethod("Setting").DeclaringType != typeof(MainPlugin)
+                    if (mainplug.PluginName == mod.Name && mainplug.GetType().GetMethod("Setting")!.DeclaringType != typeof(MainPlugin)
                     && mainplug.GetType().Assembly.Location.Contains(mod.Path.FullName))
                     {
                         mainplug.Setting();
@@ -1288,7 +1583,7 @@ namespace VPet_Simulator.Windows
                 combCalFunState.IsEnabled = true;
                 if (mw.Main.State != Main.WorkingState.Nomal)
                 {
-                    mw.Main.WorkTimer.Visibility = Visibility.Collapsed;
+                    mw.Main.WorkTimer!.Visibility = Visibility.Collapsed;
                     mw.Main.State = Main.WorkingState.Nomal;
                 }
             }
@@ -1298,88 +1593,22 @@ namespace VPet_Simulator.Windows
         {
             if (!AllowChange)
                 return;
-            mw.Set.MessageBarOutside = SwitchMsgOut.IsChecked.Value;
-            if (SwitchMsgOut.IsChecked.Value)
-                mw.Main.MsgBar.SetPlaceOUT();
+            mw.Set.MessageBarOutside = SwitchMsgOut?.IsChecked ?? false;
+            if (SwitchMsgOut?.IsChecked ?? false)
+                mw.Main.MsgBar?.SetPlaceOUT();
             else
-                mw.Main.MsgBar.SetPlaceIN();
+                mw.Main.MsgBar?.SetPlaceIN();
         }
 
         private void numBackupSaveMaxNum_ValueChanged(object sender, Panuon.WPF.SelectedValueChangedRoutedEventArgs<double?> e)
         {
             if (!AllowChange)
                 return;
-            mw.Set.BackupSaveMaxNum = (int)numBackupSaveMaxNum.Value;
+            mw.Set.BackupSaveMaxNum = (int)(numBackupSaveMaxNum?.Value ?? 0);
         }
-        int reloadid = 0;
-        private void CBSaveReLoad_MouseEnter(object sender, MouseEventArgs e)
+        private void BtnOpenSaveManager_Click(object sender, RoutedEventArgs e)
         {
-            if (reloadid != mw.Set.SaveTimes)
-            {
-                reloadid = mw.Set.SaveTimes;
-                CBSaveReLoad.SelectedItem = null;
-                CBSaveReLoad.Items.Clear();
-                if (Directory.Exists(ExtensionValue.BaseDirectory + @"\Saves"))
-                {
-                    foreach (var file in new DirectoryInfo(ExtensionValue.BaseDirectory + @"\Saves")
-                        .GetFiles($"Save{mw.PrefixSave}_*.lps").OrderByDescending(x => x.LastWriteTime))
-                    {
-                        CBSaveReLoad.Items.Add(file.Name.Split('.').First());
-                    }
-                    CBSaveReLoad.SelectedIndex = 0;
-                }
-                if (Directory.Exists(ExtensionValue.BaseDirectory + @"\Saves_BKP"))
-                {
-                    foreach (var file in new DirectoryInfo(ExtensionValue.BaseDirectory + @"\Saves_BKP")
-                        .GetFiles($"Save{mw.PrefixSave}_*.lps").OrderByDescending(x => x.LastWriteTime))
-                    {
-                        CBSaveReLoad.Items.Add(file.Name.Split('.').First());
-                    }
-                    CBSaveReLoad.SelectedIndex = 0;
-                }
-            }
-        }
-
-        private void BtnSaveReload_Click(object sender, RoutedEventArgs e)
-        {
-            if (CBSaveReLoad.SelectedItem != null)
-            {
-                string txt = (string)CBSaveReLoad.SelectedItem;
-                string path = ExtensionValue.BaseDirectory + @"\Saves\" + txt + ".lps";
-                if (!File.Exists(path))
-                {
-                    path = ExtensionValue.BaseDirectory + @"\Saves_BKP\" + txt + ".lps";
-                }
-                if (File.Exists(path))
-                {
-                    try
-                    {
-                        GameSave_v2 gs = new GameSave_v2(new LPS(File.ReadAllText(path)));
-                        if (MessageBoxX.Show("存档名称:{0}\n存档等级:{1}\n存档金钱:{2}\nHashCheck:{3}\n是否加载该备份存档? 当前游戏数据会丢失"
-                            .Translate(gs.GameSave.Name, gs.GameSave.Level, gs.GameSave.Money, gs.HashCheck), "是否加载该备份存档? 当前游戏数据会丢失".Translate(), MessageBoxButton.YesNo, MessageBoxIcon.Info) == MessageBoxResult.Yes)
-                        {
-                            try
-                            {
-                                if (mw.Main.State != Main.WorkingState.Nomal)
-                                {
-                                    mw.Main.WorkTimer.Visibility = Visibility.Collapsed;
-                                    mw.Main.State = Main.WorkingState.Nomal;
-                                }
-                                if (!mw.SavesLoad(new LPS(File.ReadAllText(path))))
-                                    MessageBoxX.Show("存档损毁,无法加载该存档\n可能是上次储存出错或Steam云同步导致的\n请在设置中加载备份还原存档", "存档损毁".Translate());
-                            }
-                            catch (Exception ex)
-                            {
-                                MessageBoxX.Show("存档损毁,无法加载该存档\n可能是数据溢出/超模导致的" + '\n' + ex.Message, "存档损毁".Translate());
-                            }
-                        }
-                    }
-                    catch (Exception exp)
-                    {
-                        MessageBoxX.Show("存档损毁,无法加载该备份\n请更换备份重试".Translate() + '\n' + exp.ToString(), "存档损毁".Translate());
-                    }
-                }
-            }
+            new winSaveManager(mw).ShowDialog();
         }
 
         private void Mod_Click(object sender, RoutedEventArgs e)
@@ -1396,7 +1625,24 @@ namespace VPet_Simulator.Windows
 
         private void Using_Click(object sender, RoutedEventArgs e)
         {
-            MessageBoxX.Show(string.Join("\n", CoreMOD.LoadedDLL), "DLL引用名单".Translate());
+            string NormalizeDllName(string dll)
+            {
+                var fileName = Path.GetFileName(dll);
+                if (string.IsNullOrWhiteSpace(fileName))
+                    fileName = dll;
+                return Path.GetFileNameWithoutExtension(fileName) ?? fileName;
+            }
+
+            var rows = CoreMOD.LoadedDLL
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(NormalizeDllName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(name => ExtensionValue.DllReferenceDescriptions.TryGetValue(name, out var description)
+                    ? $"> {name}\n{description}"
+                    : $"> {name}.dll")
+                .ToList();
+
+            MessageBoxX.Show(string.Join("\n", rows), "DLL引用名单".Translate());
         }
 
         private void combCalFunState_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1413,10 +1659,10 @@ namespace VPet_Simulator.Windows
             if (!AllowChange)
                 return;
             mw.Set["v"][(gbol)"HitThrough"] = true;
-            mw.Set.HitThrough = HitThroughBox.IsChecked.Value;
-            if (HitThroughBox.IsChecked.Value != mw.HitThrough)
+            mw.Set.HitThrough = HitThroughBox.IsChecked ?? false;
+            if (HitThroughBox.IsChecked ?? false != mw.HitThrough)
                 mw.SetTransparentHitThrough();
-            if (HitThroughBox.IsChecked.Value)
+            if (HitThroughBox.IsChecked ?? false)
                 PetHelperBox.IsChecked = true;
         }
 
@@ -1442,7 +1688,7 @@ namespace VPet_Simulator.Windows
             if (!AllowChange)
                 return;
             mw.Set.SetLanguage((string)LanguageBox.SelectedItem);
-            TextBoxPetName.Text = mw.Core.Save.Name;
+            TextBoxPetName.Text = mw.Core.Save!.Name;
             ButtonRestartGraph.Visibility = Visibility.Visible;
 
         }
@@ -1501,7 +1747,7 @@ namespace VPet_Simulator.Windows
         {
             if (!AllowChange)
                 return;
-            mw.Set["gameconfig"].SetBool("noAutoCal", !swAutoCal.IsChecked.Value);
+            mw.Set["gameconfig"].SetBool("noAutoCal", !(swAutoCal.IsChecked ?? false));
         }
 
         private void restart_click(object sender, RoutedEventArgs e)
@@ -1509,7 +1755,7 @@ namespace VPet_Simulator.Windows
             if (MessageBoxX.Show("是否重置游戏数据重新开始?".Translate(), "重新开始".Translate(), MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
                 var oldsave = mw.GameSavesData;
-                mw.GameSavesData = new GameSave_v2(mw.Core.Save.Name);
+                mw.GameSavesData = new GameSave_v2(mw.Core.Save!.Name);
                 mw.Core.Save = mw.GameSavesData.GameSave;
                 mw.GameSavesData.GameSave.Event_LevelUp += mw.LevelUP;
 
@@ -1518,8 +1764,8 @@ namespace VPet_Simulator.Windows
                     mw.GameSavesData.Statistics = oldsave.Statistics;
                     if (oldsave.GameSave.Money > 10000000 || oldsave.GameSave.Money < -1000000000 || oldsave.GameSave.Exp > 100000000 || oldsave.GameSave.Exp < -10000000000)
                     {
-                        mw.Core.Save.Money = 10000;
-                        mw.Core.Save.Exp = 10000;
+                        mw.Core.Save!.Money = 10000;
+                        mw.Core.Save!.Exp = 10000;
                     }
                 }
                 mw.HashCheck = true;
@@ -1643,7 +1889,7 @@ namespace VPet_Simulator.Windows
             if (playtime == 0) return;
             if (mw.GameSavesData.HashCheck)
             {//对于
-                int hours = mw.GameSavesData.Statistics[(gint)"stat_total_time"] / 60;
+                int hours = mw.GameSavesData.Statistics![(gint)"stat_total_time"] / 60;
                 if (hours < playtime)
                 {
                     mw.GameSavesData.Statistics[(gint)"stat_total_time"] = playtime * 60;
@@ -1658,6 +1904,24 @@ namespace VPet_Simulator.Windows
             {
                 GameSave_v2 ogs = mw.GameSavesData;
                 mw.GameSavesData = new GameSave_v2(ogs.GameSave.Name);
+                mw.GameSavesData.Statistics[(gint)"stat_time"] = ogs.Statistics![(gint)"stat_time"];
+                mw.GameSavesData.Statistics[(gint)"stat_autobuy"] = ogs.Statistics![(gint)"stat_autobuy"];
+                mw.GameSavesData.Statistics[(gint)"autofeel"] = ogs.Statistics![(gint)"autofeel"];
+                mw.GameSavesData.Statistics[(gint)"stat_autogift"] = ogs.Statistics![(gint)"stat_autogift"];
+                mw.GameSavesData.Statistics[(gint)"stat_buytimes"] = ogs.Statistics![(gint)"stat_buytimes"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_food"] = ogs.Statistics![(gint)"stat_bb_food"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_drink"] = ogs.Statistics![(gint)"stat_bb_drink"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_drug"] = ogs.Statistics![(gint)"stat_bb_drug"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_drug_exp"] = ogs.Statistics![(gint)"stat_bb_drug_exp"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_snack"] = ogs.Statistics![(gint)"stat_bb_snack"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_functional"] = ogs.Statistics![(gint)"stat_bb_functional"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_meal"] = ogs.Statistics![(gint)"stat_bb_meal"];
+                mw.GameSavesData.Statistics[(gint)"stat_bb_gift"] = ogs.Statistics![(gint)"stat_bb_gift"];
+                mw.GameSavesData.Statistics[(gint)"stat_work_time"] = ogs.Statistics![(gint)"stat_work_time"];
+                mw.GameSavesData.Statistics[(gint)"stat_study_time"] = ogs.Statistics![(gint)"stat_study_time"];
+                mw.GameSavesData.Statistics[(gint)"stat_sleep_time"] = ogs.Statistics![(gint)"stat_sleep_time"];
+                mw.GameSavesData.Statistics[(gint)"stat_betterbuy"] = ogs.Statistics![(gint)"stat_betterbuy"];
+
                 mw.GameSavesData.Statistics[(gint)"stat_total_time"] = playtime * 60;
                 mw.GameSavesData.GameSave.Event_LevelUp += mw.LevelUP;
 
@@ -1692,7 +1956,7 @@ namespace VPet_Simulator.Windows
         {
             if (!AllowChange)
                 return;
-            mw.Set.DeBug = ConsoleBox.IsChecked.Value;
+            mw.Set.DeBug = ConsoleBox.IsChecked ?? false;
         }
 
         private void TextBoxHostName_TextChanged(object sender, TextChangedEventArgs e)
@@ -1720,7 +1984,7 @@ namespace VPet_Simulator.Windows
         {
             if (!AllowChange)
                 return;
-            if(SwitchOpacity.IsChecked == true)
+            if (SwitchOpacity.IsChecked == true)
             {
                 mw.Set.OpacityHitThrough = true;
                 mw.Set.OpacityMain = true;
@@ -1745,7 +2009,7 @@ namespace VPet_Simulator.Windows
         {
             if (!AllowChange)
                 return;
-            if(AutoChangeWindowEvent.IsChecked == true)
+            if (AutoChangeWindowEvent.IsChecked == true)
             {
                 mw.Set.AutoChangeWindow = true;
             }
@@ -1754,6 +2018,28 @@ namespace VPet_Simulator.Windows
                 mw.Set.AutoChangeWindow = false;
             }
             UpdateMoveAreaText();
+        }
+
+        private void BC_Click(object sender, RoutedEventArgs e)
+        {
+            Task.Run(() => ExtensionFunction.StartURL($"https://bettercontribution.exlb.net/shop#steamid={mw.SteamID}&checkkey={mw.GenerateAuthKey().Result}&lang={LocalizeCore.CurrentCulture}"));
+        }
+
+        private void VV_Click(object sender, RoutedEventArgs e)
+        {
+            Task.Run(() => ExtensionFunction.StartURL($"https://vpetvote.exlb.net/#steamid={mw.SteamID}&checkkey={mw.GenerateAuthKey().Result}&lang={LocalizeCore.CurrentCulture}"));
+        }
+
+        private void ButtonReLS_Click(object sender, RoutedEventArgs e)
+        {
+            ShowModList();
+        }
+
+        private void tb_seach_mod_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!AllowChange)
+                return;
+            RenderModList(selectedModInfo?.Path.FullName, tb_seach_mod.Text);
         }
 
         private void SwitchHideFromTaskControl_OnChecked(object sender, RoutedEventArgs e)

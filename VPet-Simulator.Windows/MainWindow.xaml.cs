@@ -32,8 +32,8 @@ namespace VPet_Simulator.Windows
     /// </summary>
     public partial class MainWindow : WindowX
     {
-        internal System.Windows.Forms.NotifyIcon notifyIcon;
-        public PetHelper petHelper;
+        internal System.Windows.Forms.NotifyIcon notifyIcon = null!;
+        public PetHelper? petHelper;
         public System.Timers.Timer AutoSaveTimer = new System.Timers.Timer();
 
         public MainWindow()
@@ -66,14 +66,14 @@ namespace VPet_Simulator.Windows
 
             PNGAnimation.MaxLoadMemory += (int)Function.MemoryUsage();
 
-            ExtensionValue.BaseDirectory = new FileInfo(System.Reflection.Assembly.GetExecutingAssembly().Location).DirectoryName;
+            ExtensionValue.BaseDirectory = new FileInfo(System.Reflection.Assembly.GetExecutingAssembly()!.Location)!.DirectoryName!;
 
 
             LocalizeCore.StoreTranslation = true;
             LocalizeCore.TranslateFunc = (str) =>
             {
                 var destr = Sub.TextDeReplace(str);
-                if (destr != str && LocalizeCore.CurrentLPS != null && LocalizeCore.CurrentLPS.Assemblage.TryGetValue(destr, out ILine line))
+                if (destr != str && LocalizeCore.CurrentLPS != null && LocalizeCore.CurrentLPS.Assemblage.TryGetValue(destr, out ILine? line))
                 {
                     return line.GetString();
                 }
@@ -249,7 +249,7 @@ namespace VPet_Simulator.Windows
                     //COD Check
                     if (!Set["v"][(gbol)"CODC"])
                     {
-                        var di = new DirectoryInfo(ExtensionValue.BaseDirectory).Parent;
+                        var di = new DirectoryInfo(ExtensionValue.BaseDirectory!).Parent!;
                         if (di.Exists && di.GetDirectories("*Call of Duty*").Length != 0)
                         {
                             Dispatcher.Invoke(() => NoticeBox.Show("检测到游戏库中包含使命召唤,建议不要在运行COD时运行桌宠\n根据社区反馈, COD可能会误报桌宠为作弊软件".Translate(),
@@ -257,6 +257,7 @@ namespace VPet_Simulator.Windows
                         }
                         Set["v"][(gbol)"CODC"] = true;
                     }
+                    Set.SteamID = (long)SteamID;
                     Dispatcher.Invoke(() =>
                     {
                         var menuItem = new MenuItem()
@@ -264,7 +265,7 @@ namespace VPet_Simulator.Windows
                             Header = "访客表".Translate(),
                             HorizontalContentAlignment = HorizontalAlignment.Center
                         };
-                        Main.ToolBar.MenuInteract.Items.Add(menuItem);
+                        Main.ToolBar!.MenuInteract.Items.Add(menuItem);
 
                         var menuCreate = new MenuItem()
                         {
@@ -295,7 +296,7 @@ namespace VPet_Simulator.Windows
                         {
                             if (winMutiPlayer == null)
                             {
-                                winInputBox.Show(this, "请输入访客表ID/固定ID".Translate(), "加入访客表".Translate(), "1860000", (id) =>
+                                winInputBox.Show(this, "请输入访客表ID/固定ID".Translate(), "加入访客表".Translate(), "1860000", async (id) =>
                                 {
                                     if (ulong.TryParse(id, NumberStyles.HexNumber, null, out ulong lid))
                                     {
@@ -304,7 +305,7 @@ namespace VPet_Simulator.Windows
                                     }
                                     else if ((id.StartsWith('V') || id.StartsWith('v')) && int.TryParse(id[1..], out int fixedid))
                                     {
-                                        if (ulong.TryParse(GetVPetRoom("SteamRoomGetLobbyID", fixID: fixedid), out lid) && lid > 1860000)
+                                        if (ulong.TryParse(await GetVPetRoom("SteamRoomGetLobbyID", fixID: fixedid), out lid) && lid > 1860000)
                                         {
                                             winMutiPlayer = new winMutiPlayer(this, lid);
                                             winMutiPlayer.Show();
@@ -356,11 +357,11 @@ namespace VPet_Simulator.Windows
                   }]);
                 Item.UseAction.Add("Toy", [(imw,Item) =>
                   {//玩具: 默认播放玩耍动画
-                       var graph = imw.Core.Graph.FindGraph(Item.Data, AnimatType.A_Start, imw.GameSavesData.GameSave.Mode);
+                       var graph = imw.Core.Graph!.FindGraph(Item.Data, AnimatType.A_Start, imw.GameSavesData.GameSave.Mode);
                        imw.ActivityLogs.Add(new ActivityLog("al_take_item", Item.TranslateName));
                       if (graph == null)
                           {
-                             graph = imw.Core.Graph.FindGraph(Item.Data, AnimatType.Single, imw.GameSavesData.GameSave.Mode);
+                             graph = imw.Core.Graph!.FindGraph(Item.Data, AnimatType.Single, imw.GameSavesData.GameSave.Mode);
                               if(graph != null)
                                 {
                                     imw.Main.Display(graph, Main.DisplayToNomal);
@@ -372,7 +373,7 @@ namespace VPet_Simulator.Windows
                           return true;
                           }
 
-                        imw.Main.Display(Item.Data, AnimatType.A_Start, imw.Main.DisplayBLoopingToNomal(imw.Core.Graph.GraphConfig.GetDuration(graph.GraphInfo.Name)));
+                        imw.Main.Display(Item.Data, AnimatType.A_Start, imw.Main.DisplayBLoopingToNomal(imw.Core.Graph!.GraphConfig.GetDuration(graph.GraphInfo.Name)));
                         return true;
                   }]);
                 Item.UseAction.Add("Mail", [
@@ -385,9 +386,9 @@ namespace VPet_Simulator.Windows
                               var chosenfood = imw.Foods.FindAll(x=>x.Price > 10 && x.Price < moneylimit);
                               if(chosenfood.Count == 0)
                                     return false;
-                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(Foods.Count)].Clone());
-                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(Foods.Count)].Clone());
-                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(Foods.Count)].Clone());
+                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(chosenfood.Count)].Clone());
+                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(chosenfood.Count)].Clone());
+                              imw.ItemsAdd(chosenfood[Function.Rnd.Next(chosenfood.Count)].Clone());
                               Item.Consume(imw);
                               return true;
                       }
@@ -400,6 +401,8 @@ namespace VPet_Simulator.Windows
                       foreach(var line in lps)
                       {
                           var itm = Item.CreateItem(imw,line);
+                          if(itm == null)
+                              continue;
                           itm.LoadSource(this);
                           imw.ItemsAdd(itm);
                           itemnames.Add(itm.TranslateName);
@@ -458,7 +461,7 @@ namespace VPet_Simulator.Windows
                 btn.Click += (_, _) =>
                 {
                     Set["banuser"][(gbol)friend.Id.Value.ToString()] = true;
-                    Main.MsgBar.ForceClose();
+                    Main.MsgBar?.ForceClose();
                 };
                 var stackpanal = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
                 stackpanal.Children.Add(tb);
@@ -478,7 +481,7 @@ namespace VPet_Simulator.Windows
                     {
                         winMutiPlayer = new winMutiPlayer(this, lobby.Id);
                         winMutiPlayer.Show();
-                        Main.MsgBar.ForceClose();
+                        Main.MsgBar?.ForceClose();
                     }
                     else
                     {
@@ -492,7 +495,7 @@ namespace VPet_Simulator.Windows
         }
 
 
-        internal winMutiPlayer winMutiPlayer;
+        internal winMutiPlayer? winMutiPlayer;
 
         public new void Close()
         {
@@ -512,7 +515,7 @@ namespace VPet_Simulator.Windows
             base.Close();
         }
 
-        private void Restart_Closed(object sender, EventArgs e)
+        private void Restart_Closed(object? sender, EventArgs? e)
         {
             CloseConfirm = false;
             try
@@ -551,7 +554,7 @@ namespace VPet_Simulator.Windows
                 {
                     if (Core != null && Core.Graph != null)
                     {
-                        foreach (var igs in Core.Graph.GraphsList.Values)
+                        foreach (var igs in Core.Graph!.GraphsList.Values)
                         {
                             foreach (var ig2 in igs.Values)
                             {
@@ -603,7 +606,7 @@ namespace VPet_Simulator.Windows
             {
                 if (Core != null && Core.Graph != null)
                 {
-                    foreach (var igs in Core.Graph.GraphsList.Values)
+                    foreach (var igs in Core.Graph!.GraphsList.Values)
                     {
                         foreach (var ig2 in igs.Values)
                         {
@@ -670,115 +673,129 @@ namespace VPet_Simulator.Windows
                     var latestsave = ds[i];
                     if (latestsave != null)
                     {
-#if !DEBUG
-                        try
-                        {
-#endif
-                        GameSave_v2 gs = new GameSave_v2(new LPS(File.ReadAllText(latestsave)));
-                        //看看有没有备份,和备份对比下
-                        if (Directory.Exists(ExtensionValue.BaseDirectory + @"\Saves_BKP"))
-                        {
-                            var bks = new DirectoryInfo(ExtensionValue.BaseDirectory + @"\Saves_BKP")
-                                .GetFiles($"Save{PrefixSave}_*.lps").OrderByDescending(x => x.LastWriteTime).FirstOrDefault();
-                            if (bks != null)
-                                try
-                                {
-                                    var gs2 = new GameSave_v2(new LPS(File.ReadAllText(bks.FullName)));
-                                    if (!(gs2.GameSave.Level == gs.GameSave.Level &&
-                                        gs2.GameSave.Exp == gs.GameSave.Exp &&
-                                        gs2.GameSave.Money == gs.GameSave.Money))
-                                    {
-                                        //和备份不一样,说明可能有问题, 提示用户
-                                        MessageBox.Show("检测到存档和备份不一致\n当前存档:{0} Lv{1} ${4:f0}\n备份存档:{2} Lv{3} ${5:f0}\n如需还原请在设置中加载备份还原存档"
-                                            .Translate(new FileInfo(latestsave).Name, gs.GameSave.Level, bks.Name, gs2.GameSave.Level, gs.GameSave.Money, gs2.GameSave.Money)
-                                            , "存档不一致提示".Translate());
-
-                                    }
-                                }
-                                catch
-                                {
-                                    //备份损坏了,那就不管了                           
-                                }
-                        }
-
-                        if (SavesLoad(new LPS(File.ReadAllText(latestsave))))
+                        if (TryLoadSaveFile(latestsave))
                             return;
-                        //MessageBoxX.Show("存档损毁,无法加载该存档\n可能是上次储存出错或Steam云同步导致的\n请在设置中加载备份还原存档", "存档损毁".Translate());
-#if !DEBUG
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBoxX.Show("存档损毁,无法加载该存档\n可能是数据溢出/超模导致的" + '\n' + ex.Message, "存档损毁".Translate());
-                        }
-#endif
                     }
                 }
 
             }
             GameSavesData = new GameSave_v2(petname.Translate());
             //看看有没有备份,和备份对比下 (新建游戏)
-            if (Directory.Exists(ExtensionValue.BaseDirectory + @"\Saves_BKP"))
-            {
-                try
-                {
-                    var bks = new DirectoryInfo(ExtensionValue.BaseDirectory + @"\Saves_BKP")
-                        .GetFiles($"Save{PrefixSave}_*.lps").OrderByDescending(x => x.LastWriteTime).First();
-                    var gs2 = new GameSave_v2(new LPS(File.ReadAllText(bks.FullName)));
-                    //和备份不一样,说明可能有问题, 提示用户
-                    MessageBox.Show("检测到存档和备份不一致\n当前存档:{0} Lv{1} ${4:f0}\n备份存档:{2} Lv{3} ${5:f0}\n如需还原请在设置中加载备份还原存档"
-                        .Translate("New Game", GameSavesData.GameSave.Level, bks.Name, gs2.GameSave.Level, GameSavesData.GameSave.Money, gs2.GameSave.Money)
-                        , "存档不一致提示".Translate());
-                }
-                catch
-                {
-                    //备份损坏了,那就不管了
-                }
-            }
+            CheckBackupConsistency(GameSavesData, "New Game");
             Core.Save = GameSavesData.GameSave;
             HashCheck = HashCheck;
             GameSavesData.GameSave.Event_LevelUp += LevelUP;
+        }
+
+        /// <summary>
+        /// 尝试加载指定存档文件
+        /// </summary>
+        /// <param name="saveFilePath"></param>
+        /// <returns></returns>
+        private bool TryLoadSaveFile(string saveFilePath)
+        {
+            if (string.IsNullOrEmpty(saveFilePath))
+                return false;
+#if !DEBUG
+            try
+            {
+#endif
+            var content = File.ReadAllText(saveFilePath);
+            GameSave_v2 gs = new GameSave_v2(new LPS(content));
+            // 检查备份一致性
+            CheckBackupConsistency(gs, new FileInfo(saveFilePath).Name);
+
+            if (SavesLoad(new LPS(content)))
+                return true;
+#if !DEBUG
+            }
+            catch (Exception ex)
+            {
+                MessageBoxX.Show("存档损毁,无法加载该存档\n可能是数据溢出/超模导致的" + '\n' + ex.Message, "存档损毁".Translate());
+            }
+#endif
+            return false;
+        }
+
+        /// <summary>
+        /// 与最新备份对比并提示用户
+        /// </summary>
+        private void CheckBackupConsistency(GameSave_v2 gs, string currentName)
+        {
+            if (!Directory.Exists(ExtensionValue.BaseDirectory + @"\Saves_BKP"))
+                return;
+            try
+            {
+                var bks = new DirectoryInfo(ExtensionValue.BaseDirectory + @"\Saves_BKP")
+                    .GetFiles($"Save{PrefixSave}_*.lps").OrderByDescending(x => x.LastWriteTime).FirstOrDefault();
+                if (bks != null)
+                {
+                    try
+                    {
+                        var gs2 = new GameSave_v2(new LPS(File.ReadAllText(bks.FullName)));
+                        if (!(gs2.GameSave.Level == gs.GameSave.Level &&
+                            gs2.GameSave.Exp == gs.GameSave.Exp &&
+                            gs2.GameSave.Money == gs.GameSave.Money))
+                        {
+                            //和备份不一样,说明可能有问题, 提示用户
+                            MessageBox.Show("检测到存档和备份不一致\n当前存档:{0} Lv{1} ${4:f0}\n备份存档:{2} Lv{3} ${5:f0}\n如需还原请在设置中加载备份还原存档"
+                                .Translate(currentName, gs.GameSave.Level, bks.Name, gs2.GameSave.Level, gs.GameSave.Money, gs2.GameSave.Money)
+                                , "存档不一致提示".Translate());
+
+                        }
+                    }
+                    catch
+                    {
+                        //备份损坏了,那就不管了
+                    }
+                }
+            }
+            catch
+            {
+
+            }
         }
 
         private void WorkTimer_E_FinishWork(WorkTimer.FinishWorkInfo obj)
         {
             if (obj.work.Type == GraphHelper.Work.WorkType.Work)
             {
-                GameSavesData.Statistics[(gint)"stat_single_profit_money"] = (int)obj.count;
+                GameSavesData.Statistics![(gint)"stat_single_profit_money"] = (int)obj.count;
             }
             else
             {
-                GameSavesData.Statistics[(gint)"stat_single_profit_exp"] = (int)obj.count;
+                GameSavesData.Statistics![(gint)"stat_single_profit_exp"] = (int)obj.count;
             }
         }
 
         private void Main_Event_TouchBody()
         {
-            GameSavesData.Statistics[(gint)"stat_touch_body"]++;
+            GameSavesData.Statistics![(gint)"stat_touch_body"]++;
         }
 
         private void Main_Event_TouchHead()
         {
-            GameSavesData.Statistics[(gint)"stat_touch_head"]++;
+            GameSavesData.Statistics![(gint)"stat_touch_head"]++;
         }
 
         private void Main_OnSay(SayInfo obj)
         {
-            GameSavesData.Statistics[(gint)"stat_say_times"]++;
+            GameSavesData.Statistics![(gint)"stat_say_times"]++;
         }
 
-        private void MoveTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void MoveTimer_Elapsed(object? sender, ElapsedEventArgs? e)
         {
-            GameSavesData.Statistics[(gint)"stat_move_length"] += (int)(Math.Abs(Main.MoveTimerPoint.X) + Math.Abs(Main.MoveTimerPoint.Y));
+            GameSavesData.Statistics![(gint)"stat_move_length"] += (int)(Math.Abs(Main.MoveTimerPoint.X) + Math.Abs(Main.MoveTimerPoint.Y));
         }
 
-        private void AutoSaveTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void AutoSaveTimer_Elapsed(object? sender, ElapsedEventArgs? e)
         {
             CheckGalleryUnlock();
             Save();
         }
 
 
-        private void Window_Closed(object sender, EventArgs e)
+        private void Window_Closed(object? sender, EventArgs? e)
         {
             CloseConfirm = false;
             try
@@ -813,7 +830,9 @@ namespace VPet_Simulator.Windows
                 //所以这里通过 Hook 的方式，在不使用WPF内置的透明实现的情况下，强行保证这个样式存在。
                 if (msg == (int)Win32.WM.STYLECHANGING && (long)wParam == (long)Win32.GetWindowLongFields.GWL_EXSTYLE)
                 {
+#pragma warning disable CS8605 // 取消装箱可能为 null 的值。
                     var styleStruct = (STYLESTRUCT)Marshal.PtrToStructure(lParam, typeof(STYLESTRUCT));
+#pragma warning restore CS8605 // 取消装箱可能为 null 的值。
                     styleStruct.styleNew |= (int)Win32.ExtendedWindowStyles.WS_EX_LAYERED;
 
                     // Hide windows from alt+tab: https://stackoverflow.com/questions/357076/best-way-to-hide-a-window-from-the-alt-tab-program-switcher
@@ -853,7 +872,7 @@ namespace VPet_Simulator.Windows
                 //uint extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
                 //SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle | WS_EX_TRANSPARENT);
                 HitThrough = !HitThrough;
-                (notifyIcon.ContextMenuStrip.Items.Find("NotifyIcon_HitThrough", false).First() as System.Windows.Forms.ToolStripMenuItem).Checked = HitThrough;
+                (notifyIcon.ContextMenuStrip!.Items.Find("NotifyIcon_HitThrough", false)!.First() as System.Windows.Forms.ToolStripMenuItem)!.Checked = HitThrough;
                 if (HitThrough)
                 {
                     Win32.User32.SetWindowLongPtr(_hwnd, Win32.GetWindowLongFields.GWL_EXSTYLE,
@@ -895,9 +914,10 @@ namespace VPet_Simulator.Windows
         /// <summary>
         /// 从VPET服务器获取访客表相关信息的接口
         /// </summary>
-        public string GetVPetRoom(string action, int fixID = 0, ulong lobbyid = 0)
+        public async Task<string> GetVPetRoom(string action, int fixID = 0, ulong lobbyid = 0)
         {
-            string RequestURL = $"https://report.exlb.net/VPET/{action}?hoststeamid={SteamID}&fixid={fixID}&lobbyid={lobbyid}";
+            var checkkey = await GenerateAuthKey();
+            string RequestURL = $"https://report.exlb.net/VPET/{action}?hoststeamid={SteamID}&fixid={fixID}&lobbyid={lobbyid}&checkkey={checkkey}";
             using System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
             try
             {

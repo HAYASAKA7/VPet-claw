@@ -39,18 +39,29 @@ namespace VPet_Simulator.Core
         /// </summary>
         public bool IsReady { get; private set; } = false;
 
-        public TaskControl Control { get; set; }
+        public TaskControl? Control { get; set; }
 
         int nowid;
         /// <summary>
         /// 图片资源
         /// </summary>
-        public string Path { get; set; }
+        public string Path { get; set; } = "";
         private GraphCore GraphCore;
+        private BitmapSource? SpriteSheetSource;
+        private Int32Rect[]? FrameRects;
+        private readonly object SpriteSheetLock = new object();
+        private readonly object FrameCacheLock = new object();
+        private readonly Dictionary<int, BitmapSource> FrameCache = new Dictionary<int, BitmapSource>();
+        private int FrameWidth;
+        private int FrameHeight;
+        public long LastUseTimeTicks = DateTime.UtcNow.Ticks;
+
+        private const int FrameCacheAheadCount = 2;
 
         public bool IsFail { get; set; } = false;
 
         public string FailMessage { get; set; } = "";
+
         /// <summary>
         /// 新建 PNG 动画
         /// </summary>
@@ -61,7 +72,6 @@ namespace VPet_Simulator.Core
         {
             Animations = new List<Animation>();
             IsLoop = isLoop;
-            //StoreMemory = storemem;
             GraphInfo = graphinfo;
             GraphCore = graphCore;
             if (!GraphCore.CommConfig.ContainsKey("PA_Setup"))
@@ -69,7 +79,6 @@ namespace VPet_Simulator.Core
                 GraphCore.CommConfig["PA_Setup"] = true;
                 GraphCore.Dispatcher.Invoke(() =>
                 {
-
                     GraphCore.CommUIElements["Image1.PNGAnimation"] = new System.Windows.Controls.Image() { Height = 500 };
                     GraphCore.CommUIElements["Image2.PNGAnimation"] = new System.Windows.Controls.Image() { Height = 500 };
                     GraphCore.CommUIElements["Image3.PNGAnimation"] = new System.Windows.Controls.Image() { Height = 500 }; // 多整个, 防止动画闪烁
@@ -101,7 +110,6 @@ namespace VPet_Simulator.Core
             graph.AddGraph(pa);
         }
 
-        public double Width;
         /// <summary>
         /// 最大同时加载数
         /// </summary>
@@ -117,73 +125,107 @@ namespace VPet_Simulator.Core
             {
                 //新方法:加载大图片
                 //生成大文件加载非常慢,先看看有没有缓存能用
-                Path = System.IO.Path.Combine(GraphCore.CachePath, $"{GraphCore.Resolution}_{Math.Abs(Sub.GetHashCode(path))}_{paths.Length}.png");
-                Width = 500 * (paths.Length + 1);
-                if (!File.Exists(Path) && !((List<string>)GraphCore.CommConfig["Cache"]).Contains(path))
+                Path = System.IO.Path.Combine(GraphCore.CachePath, $"{GraphCore!.Resolution}_{Math.Abs(Sub.GetHashCode(path))}_{paths.Length}.png");
+                var sem = GraphCore.SpriteSheetBuildLocks.GetOrAdd(Path, _ => new SemaphoreSlim(1, 1));
+                await sem.WaitAsync();
+                try
                 {
-                    ((List<string>)GraphCore.CommConfig["Cache"]).Add(path);
-                    int w = 0;
-                    int h = 0;
-                    // Load the first image
-                    using (var firstImage = SKBitmap.Decode(paths[0].FullName))
+                    if (!File.Exists(Path) && !((List<string>)GraphCore.CommConfig["Cache"]).Contains(path))
                     {
-                        w = firstImage.Width;
-                        h = firstImage.Height;
-
-                        // Adjust width and height based on resolution
-                        if (w > GraphCore.Resolution)
-                        {
-                            w = GraphCore.Resolution;
-                            h = (int)(h * (GraphCore.Resolution / (double)firstImage.Width));
-                        }
-
-                        if (paths.Length * w >= 60000)
-                        {//修复大长动画导致过长分辨率导致可能的报错
-                            w = 60000 / paths.Length;
-                            h = (int)(firstImage.Height * (w / (double)firstImage.Width));
-                        }
-                    }
-
-                    // Create a new bitmap to draw on
-                    using (var combinedBitmap = new SKBitmap(w * paths.Length, h))
-                    using (var canvas = new SKCanvas(combinedBitmap))
-                    {
-                        // Draw the first image
+                        ((List<string>)GraphCore.CommConfig["Cache"]).Add(path);
+                        int w = 0;
+                        int h = 0;
+                        // Load the first image
                         using (var firstImage = SKBitmap.Decode(paths[0].FullName))
                         {
-                            canvas.DrawBitmap(firstImage, new SKRect(0, 0, w, h));
+                            w = firstImage.Width;
+                            h = firstImage.Height;
+
+                            // Adjust width and height based on resolution
+                            if (w > GraphCore.Resolution)
+                            {
+                                w = GraphCore.Resolution;
+                                h = (int)(h * (GraphCore.Resolution / (double)firstImage.Width));
+                            }
+
+                            if (paths.Length * w >= 60000)
+                            {//修复大长动画导致过长分辨率导致可能的报错
+                                w = 60000 / paths.Length;
+                                h = (int)(firstImage.Height * (w / (double)firstImage.Width));
+                            }
                         }
 
-                        // Create an array to hold bitmaps for the remaining images
-                        SKBitmap[] bitmaps = new SKBitmap[paths.Length - 1];
+                        FrameWidth = w;
+                        FrameHeight = h;
 
-                        // Load and draw remaining images in parallel
-                        Parallel.For(1, paths.Length, i =>
+                        // Create a new bitmap to draw on
+                        using (var combinedBitmap = new SKBitmap(w * paths.Length, h))
+                        using (var canvas = new SKCanvas(combinedBitmap))
                         {
-                            var img = SKBitmap.Decode(paths[i].FullName);
-                            bitmaps[i - 1] = img; // Store the bitmap in the array
-                        });
+                            // Draw the first image
+                            using (var firstImage = SKBitmap.Decode(paths[0].FullName))
+                            {
+                                canvas.DrawBitmap(firstImage, new SKRect(0, 0, w, h));
+                            }
 
-                        // Now draw the bitmaps onto the combined canvas
-                        for (int i = 0; i < bitmaps.Length; i++)
-                        {
-                            canvas.DrawBitmap(bitmaps[i], new SKRect(w * (i + 1), 0, w * (i + 2), h));
-                        }
+                            // Create an array to hold bitmaps for the remaining images
+                            SKBitmap[] bitmaps = new SKBitmap[paths.Length - 1];
 
-                        // Save the combined image to the cache path
-                        using (var image = SKImage.FromBitmap(combinedBitmap))
-                        using (var data = image.Encode(SKEncodedImageFormat.Png, 100))
-                        using (var stream = File.OpenWrite(Path))
-                        {
-                            data.SaveTo(stream);
+                            // Load and draw remaining images in parallel
+                            Parallel.For(1, paths.Length, i =>
+                            {
+                                var img = SKBitmap.Decode(paths[i].FullName);
+                                bitmaps[i - 1] = img; // Store the bitmap in the array
+                            });
+
+                            // Now draw the bitmaps onto the combined canvas
+                            for (int i = 0; i < bitmaps.Length; i++)
+                            {
+                                canvas.DrawBitmap(bitmaps[i], new SKRect(w * (i + 1), 0, w * (i + 2), h));
+                                bitmaps[i]?.Dispose();
+                            }
+
+                            // Save the combined image to the cache path
+                            using (var image = SKImage.FromBitmap(combinedBitmap))
+                            using (var data = image.Encode(SKEncodedImageFormat.Png, 100))
+                            using (var stream = File.OpenWrite(Path))
+                            {
+                                data.SaveTo(stream);
+                            }
                         }
                     }
                 }
+                finally
+                {
+                    sem.Release();
+                }
+                if (FrameWidth == 0 || FrameHeight == 0)
+                {
+                    using (var firstImage = SKBitmap.Decode(paths[0].FullName))
+                    {
+                        FrameWidth = firstImage.Width;
+                        FrameHeight = firstImage.Height;
+                        if (FrameWidth > GraphCore.Resolution)
+                        {
+                            FrameWidth = GraphCore.Resolution;
+                            FrameHeight = (int)(FrameHeight * (GraphCore.Resolution / (double)firstImage.Width));
+                        }
+                        if (paths.Length * FrameWidth >= 60000)
+                        {
+                            FrameWidth = 60000 / paths.Length;
+                            FrameHeight = (int)(firstImage.Height * (FrameWidth / (double)firstImage.Width));
+                        }
+                    }
+                }
+
+                FrameRects = new Int32Rect[paths.Length];
+
                 for (int i = 0; i < paths.Length; i++)
                 {
+                    FrameRects[i] = new Int32Rect(FrameWidth * i, 0, FrameWidth, FrameHeight);
                     var noExtFileName = System.IO.Path.GetFileNameWithoutExtension(paths[i].Name);
                     int time = int.Parse(noExtFileName.Substring(noExtFileName.LastIndexOf('_') + 1));
-                    Animations.Add(new Animation(this, time, -500 * i));
+                    Animations.Add(new Animation(this, time, i));
                 }
                 //stream = new MemoryStream(File.ReadAllBytes(cp));
                 IsReady = true;
@@ -201,7 +243,7 @@ namespace VPet_Simulator.Core
         public class Animation
         {
             private PNGAnimation parent;
-            public int MarginWIX;
+            public int FrameIndex;
             ///// <summary>
             ///// 显示
             ///// </summary>
@@ -214,13 +256,13 @@ namespace VPet_Simulator.Core
             /// 帧时间
             /// </summary>
             public int Time;
-            public Animation(PNGAnimation parent, int time, int wxi)//, Action hidden)
+            public Animation(PNGAnimation parent, int time, int frameIndex)//, Action hidden)
             {
                 this.parent = parent;
                 Time = time;
                 //Visible = visible;
                 //Hidden = hidden;
-                MarginWIX = wxi;
+                FrameIndex = frameIndex;
             }
             /// <summary>
             /// 运行该图层
@@ -229,8 +271,16 @@ namespace VPet_Simulator.Core
             /// <param name="This">显示的图层</param>
             public void Run(FrameworkElement This, TaskControl Control)
             {
+                var frameSource = parent.GetFrameSource(FrameIndex);
                 //先显示该图层
-                This.Dispatcher.Invoke(() => This.Margin = new Thickness(MarginWIX, 0, 0, 0));
+                This.Dispatcher.Invoke(() =>
+                {
+                    if (This is System.Windows.Controls.Image image)
+                    {
+                        image.Source = frameSource;
+                    }
+                    This.Margin = new Thickness(0, 0, 0, 0);
+                });
                 //然后等待帧时间毫秒
                 Thread.Sleep(Time);
                 //判断是否要下一步
@@ -271,8 +321,9 @@ namespace VPet_Simulator.Core
         /// <summary>
         /// 从0开始运行该动画
         /// </summary>
-        public void Run(Decorator parant, Action EndAction = null)
+        public void Run(Decorator parant, Action? EndAction = null)
         {
+            Touch();
             if (!IsReady)
             {
                 EndAction?.Invoke();
@@ -295,7 +346,7 @@ namespace VPet_Simulator.Core
                 }
                 System.Windows.Controls.Image img;
 
-                if (parant.Child == GraphCore.CommUIElements["Image1.PNGAnimation"])
+                if (parant.Child == GraphCore!.CommUIElements["Image1.PNGAnimation"])
                 {
                     img = (System.Windows.Controls.Image)GraphCore.CommUIElements["Image1.PNGAnimation"];
                 }
@@ -306,24 +357,24 @@ namespace VPet_Simulator.Core
                 else
                 {
                     img = (System.Windows.Controls.Image)GraphCore.CommUIElements["Image2.PNGAnimation"];
-                    if (parant.Child != GraphCore.CommUIElements["Image2.PNGAnimation"])
+                    if (!ReferenceEquals(parant.Child, img))
                     {
-                        if (img.Parent == null)
-                        {
-                            parant.Child = img;
-                        }
-                        else
+                        if (img.Parent is not null)
                         {
                             img = (System.Windows.Controls.Image)GraphCore.CommUIElements["Image1.PNGAnimation"];
-                            if (img.Parent != null)
-                                ((Decorator)img.Parent).Child = null;
+                        }
+
+                        if (!ReferenceEquals(parant.Child, img))
+                        {
+                            if (img.Parent is Decorator oldParent)
+                                oldParent.Child = null;
                             parant.Child = img;
                         }
                     }
                 }
                 parant.Tag = this;
-                img.Source = new BitmapImage(new Uri(Path));
-                img.Width = Width;
+                img.Source = GetFrameSource(0);
+                img.Width = 500;
                 Task.Run(() => Animations[0].Run((System.Windows.Controls.Image)parant.Child, NEWControl));
             });
         }
@@ -333,8 +384,9 @@ namespace VPet_Simulator.Core
         /// <param name="img">用于显示的Image</param>
         /// <param name="EndAction">结束动画</param>
         /// <returns>准备好的线程</returns>
-        public Task Run(System.Windows.Controls.Image img, Action EndAction = null)
+        public Task Run(System.Windows.Controls.Image img, Action? EndAction = null)
         {
+            Touch();
             if (!IsReady)
             {
                 EndAction?.Invoke();
@@ -354,16 +406,123 @@ namespace VPet_Simulator.Core
                     return new Task(() => Animations[0].Run(img, Control));
                 }
                 img.Tag = this;
-                img.Source = new BitmapImage(new Uri(Path));
-                img.Width = Width;
+                img.Source = GetFrameSource(0);
+                img.Width = 500;
                 return new Task(() => Animations[0].Run(img, Control));
             });
         }
 
+        private BitmapSource? GetFrameSource(int frameIndex)
+        {
+            Touch();
+            EnsureSpriteSheetLoaded();
+            if (FrameRects == null || frameIndex < 0 || frameIndex >= FrameRects.Length || SpriteSheetSource == null)
+                return null;
+            lock (FrameCacheLock)
+            {
+                if (FrameCache.TryGetValue(frameIndex, out var cacheFrame))
+                {
+                    return cacheFrame;
+                }
+
+                var frame = new CroppedBitmap(SpriteSheetSource, FrameRects[frameIndex]);
+                frame.Freeze();
+                FrameCache[frameIndex] = frame;
+
+                var keepKeys = GetForwardKeepKeys(frameIndex);
+                var removeKeys = new List<int>();
+                foreach (var key in FrameCache.Keys)
+                {
+                    if (!keepKeys.Contains(key))
+                    {
+                        removeKeys.Add(key);
+                    }
+                }
+                foreach (var key in removeKeys)
+                {
+                    FrameCache.Remove(key);
+                }
+
+                return frame;
+            }
+        }
+
+        private HashSet<int> GetForwardKeepKeys(int frameIndex)
+        {
+            var keep = new HashSet<int> { frameIndex };
+            int cursor = frameIndex;
+            if (FrameRects != null)
+                for (int i = 0; i < FrameCacheAheadCount; i++)
+                {
+                    cursor++;
+                    if (cursor >= FrameRects.Length)
+                    {
+                        if (!IsLoop)
+                            break;
+                        cursor = 0;
+                    }
+                    keep.Add(cursor);
+                }
+            return keep;
+        }
+
+        private void EnsureSpriteSheetLoaded()
+        {
+            if (SpriteSheetSource != null)
+                return;
+            lock (SpriteSheetLock)
+            {
+                if (SpriteSheetSource != null)
+                    return;
+                BitmapImage spriteSheet = new BitmapImage();
+                spriteSheet.BeginInit();
+                spriteSheet.CacheOption = BitmapCacheOption.OnDemand;
+                spriteSheet.CreateOptions = BitmapCreateOptions.DelayCreation;
+                spriteSheet.UriSource = new Uri(Path);
+                spriteSheet.EndInit();
+                spriteSheet.Freeze();
+                SpriteSheetSource = spriteSheet;
+            }
+        }
+        /// <summary>
+        /// 修改最后使用时间为当前时间，以便在清理空闲缓存时判断是否需要清理
+        /// </summary>
+        public void Touch() => Interlocked.Exchange(ref LastUseTimeTicks, DateTime.UtcNow.Ticks);
+
+
+        public void CleanupIdleCache(long cleanTicks)
+        {
+            if (Control?.PlayState == true)
+                return;
+            if (SpriteSheetSource == null)
+                return;
+            long lastUse = Interlocked.Read(ref LastUseTimeTicks);
+            if (cleanTicks < lastUse)
+                return;
+
+            lock (SpriteSheetLock)
+            {
+                SpriteSheetSource = null;
+            }
+            lock (FrameCacheLock)
+            {
+                FrameCache.Clear();
+            }
+        }
+
         public void Dispose()
         {
-            Animations = null;
-            GraphCore = null;
+            Animations.Clear();
+            FrameRects = [];
+            lock (SpriteSheetLock)
+            {
+                SpriteSheetSource = null;
+            }
+            lock (FrameCacheLock)
+            {
+                FrameCache.Clear();
+            }
+            //GraphCore = null;
         }
     }
 }
